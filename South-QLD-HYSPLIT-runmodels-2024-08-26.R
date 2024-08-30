@@ -1,12 +1,16 @@
 # Examining precipiation-linked airmass changes in South-Eastern Queensland: Windows 7 version # 
 
-# Matt Harris, Keele University
-# Last updated 26/11/20
-# Contact: m.r.p.harris@keele.ac.uk
+# Matt Harris, GNS Science
+# Last updated 26/08/24
+# Contact: m.harris@gns.cri.nz
 
 # This version of the script is modified for the Chronos lab computer at UNSW, Sydney,
 #     which runs on Windows 7. To run on Windows 10, simply replace my altered 
 #     hysplit_trajectory_mod() function with hysplit_trajectory().
+
+# Note in 2024: The bugs in the splitr package that necessitated the rewrite of the hysplit_trajectory
+#     function have now been fixed. You should be able to run this script using splitr without 
+#     all the extra functions in this script.
 
 # Written and run in:
 #   Rstudio v1.2.1335
@@ -55,7 +59,11 @@ PL_lon <- 153.55
 SC_lat <- -24.73
 SC_lon <- 153.21
 
-##### Utility functions incl. new trajectory function [ALWAYS RUN] #####
+##### Utility functions incl. new trajectory function #####
+
+# As of https://github.com/rich-iannone/splitr/commit/44851122514e1296291f0e9b082326717549715f, these functions should
+#     no longer be needed. You can just run the code in the subsequent sections with hysplit_trajectory() instead of hysplit_trajectory_mod().
+#     I've left the script as-is for the sake of reproducibility.
 
 # Modified trajectory file. All this does is use the system's local time settings, rather than "en_US.UTF-8".
 hysplit_trajectory_mod <- function (lat = 49.263, lon = -123.25, height = 50, duration = 24, 
@@ -841,7 +849,7 @@ get_met_files <- function(files, path_met_files, ftp_dir) {
 
 ## Section notes
 # Updating this data in 2024 because tbh why didn't I run it to 2020 at least? 
-# Runs now to go to end of 2023.
+# Runs now to go to end of 2023. 2023 was hanging for some reason, so I left it out.
 
 ## Directories
 # met_dir_gdas <- "H:/DATA/HYSPLIT Files/GDAS1 Meteorological Data/"
@@ -849,7 +857,7 @@ met_dir_reanalysis <- "E:/DATA/HYSPLIT Files/Reanalysis Meteorological Data/"
 export_dir_years <- "C:/Users/matth/Desktop/University Files/mh phd 2020/grants and collaborations/JTibby via HCadd HYSPLIT/data/reanalysis/"
 
 
-# Functions required
+# Functions required (always)
 convert_openair <- function(x) {
   drop_columns_openair = c(
     "lat_i","lon_i","theta","rainfall","mixdepth","rh","sp_humidity",
@@ -895,7 +903,7 @@ YSH_info <- function(){
           "output_folder  | path to the folder where the trajectories will be collated. Default is C:/hysplit/working/1/","\n","------", "\n",
           "The function requires the following packages: pacman, splitr, lubridate, tibble, dplyr, R.utils, rgdal, chron","\n","------")
 }
-YSH_info()
+# YSH_info()
 
 # Here's the function. At the moment, the parts that read the outputs back into the workspace have been removed, pending further testing.
 Yearly_Site_HYSPLIT_mod <- function(site_name, year, site_lat, site_lon, traj_duration, 
@@ -906,7 +914,7 @@ Yearly_Site_HYSPLIT_mod <- function(site_name, year, site_lat, site_lon, traj_du
   # Initial user start/stop prompt. Hash out if seeking to automate
   if(isTRUE(verbose)){
     PromptContinue <- if(interactive()){
-      askYesNo("Generate yearly trajectories for the target year using user specifications? This could take a while!", 
+      askYesNo("Generate yearly trajectories for the target site based on the supplied parameters? This could take a while!", 
                default = TRUE, prompts = getOption("askYesNo", gettext(c("Y/N/C"))))
     }
     if(!isTRUE(PromptContinue)){

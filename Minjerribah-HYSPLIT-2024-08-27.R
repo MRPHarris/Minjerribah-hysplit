@@ -62,38 +62,6 @@ PL_lon <- 153.55
 
 ## The code below was used to compile the original trajectory datasets.
 
-### GDAS1 2005:2020
-# Required functions
-Add_traj_identifier <- function(x, ntraj_1 = FALSE){
-  # This function assumes that convert_openair() has been used on the dataset. 
-  x_new <- as.data.frame(x)
-  # Compute trajectory number. Starts at 1. 
-  if(!isTRUE(ntraj_1)){
-    x_new$start.time.minutes <- substr(x_new[,12],12,19)
-    x_new$start.time.minutes <- 60*24*as.numeric(chron::times(x_new$start.time.minutes))
-    x_new$trajectory <- cumsum(c(0, as.numeric(diff(x_new$start.time.minutes)) != 0)) + 1
-  } else {
-    x_new$diffs <- 1
-    x_new$diffs[2:nrow(x_new)] <- diff(x_new$hour.inc) 
-    x_new$trajectory <- cumsum(c(0,as.numeric(x_new$diffs[2:nrow(x_new)]) != -1)) + 1
-  }
-  #  x_new <<- as.data.frame(x)
-  x_new
-  #  rm(x_new, envir = parent.frame())
-}
-# adj longitude to adjust West (negative) values.
-adjust_longitude <- function(df){
-  df_new <- df
-  adj180_index <- df_new$lon < 0
-  df_new$lon[adj180_index] <- (180 + 180-abs(df_new$lon[adj180_index]))
-  df_new
-}
-## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
-# Load loop for SAR 1 to 7
-
-fixyear <- function(trajdata,
-                    problem_dateinc_years = c(1950,1951)){}
-
 
 ### REANALYSIS 1950:1999 ###
 # Required functions
@@ -123,31 +91,45 @@ adjust_longitude <- function(df){
 }
 
 ## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
+# Load loop for SAR 1 to 7
+
+# This could absolutely be made more efficient but as it's only a once or twice-off, I'm going to leave the brute-force approach.
+fixyear <- function(trajdata,
+                    wrong_years = seq(2049,2099,1),
+                    replacement_years = seq(1949,1999,1)){
+  ## vars for intra-function testing
+  # trajdata = trajfile
+  # wrong_years = c(2049,2050)
+  # replacement_years = c(1949,1950)
+  ## Simple loop with gsub
+  yit_list = vector('list',length(wrong_years))
+  for(y in seq_along(wrong_years)){
+    # Fix each.
+    # gsub year column
+    trajdata$year[which(trajdata$year == wrong_years[y])] <- replacement_years[y]
+    # gsub date.inc column
+    trajdata$date.inc <- gsub(as.character(wrong_years[y]),as.character(replacement_years[y]),trajdata$date.inc)
+    # trajdata$date.inc <- gsub("2050","1950",trajdata$date.inc)
+  }
+  return(trajdata)
+}
+
+## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
 site_names <- c("SC","PL")
 years <- seq(1950,2022,1)
-sites_it <- vector(mode = "list", length = 2)
+sites_list <- vector(mode = "list", length = 2) %>% 'names<-'(c(site_names))
 years_it <- vector(mode = "list", length = length(years))
 # dates_run <- c("2020-11-27","2020-11-28",
 #                "2020-12-17","2020-12-18",
 #                "2024-08-26","2024-08-27")
 filename_years_list <- vector(mode = 'list', length = length(years))
 filename_years_list[c(1:length(years))] <- years
-# dates run
-# datesrun_list_PL <- vector(mode = 'list', length = length(years))
-# datesrun_list_PL[c(1:16)] <- dates_run[1]
-# datesrun_list_PL[c(17:50)] <- dates_run[2]
-# datesrun_list_SC <- vector(mode = 'list', length = length(years))
-# datesrun_list_SC[c(1:31)] <- dates_run[3]
-# datesrun_list_SC[c(32:50)] <- dates_run[4]
-# Loop will import and combine trajectory data.
-
-# Revising this loop because it currently makes no sense
 # Get list of all files in the folder.
 target_file_list_short <- list.files(data_directory_reanalysis)
 target_file_list_long <- list.files(data_directory_reanalysis, full.names = T)
-for(i in seq_along(sites_it)){
-  i = 1
-  #
+# Loop
+for(i in seq_along(sites_list)){
+  # i = 1
   this_site = site_names[i]
   # Find files that start with this string
   filestr <- unlist(lapply(strsplit(target_file_list_short,"-"),"[[",1))
@@ -155,90 +137,88 @@ for(i in seq_along(sites_it)){
   # Ok, now loop through these files
   file_it_list <- vector('list', length = length(files_this_it))
   for(f in seq_along(file_it_list)){
-    f = 1
-    # year issues
-    # 1949 becomes 2049 (both year and date.inc)
-    # 1950 becomes 2050 (only  year, not date.inc)
-    # 1951
-    
+    # f = 1
     message("Importing ",target_file_list_short[files_this_it[f]])
     # Ok, now dealing with individual files.
     trajfile <- read.csv(target_file_list_long[f], header = TRUE)
-    ## FIXING YEAR BUG
     # In some instances the year and date.inc vars show wrong years. Notably 1949 always gets displayed as 2049.
-    YSH_run_year
-    
-    
-    ## Check for bugged year variable
-    trajfile_year <- as.character(trajfile$year[1])
-    trajfile_year_dateinc <- format(as.Date(trajfile$date.inc[1], format="%Y-%m-%d"),"%Y")
-     # This doesn't fix it. Figure out which years are affected and only apply it to those files (by detecting from file name).
-    if(trajfile_year != trajfile_year_dateinc){
-      message("Year bug. Fixing.")
-      trajfile$year = as.numeric(format(as.Date(trajfile$date.inc, format="%Y-%m-%d"),"%Y"))
-    }
-    
-    if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
-      # This means the year is busted. Subtract 100 years. This is wrong for most; only 1950 and 1949 are affected
-      trajfile$year <- trajfile$year-100
-    }
+    # Applied on a bulk basis just in case doing it on the final frame would cause problems
+    trajfile <- fixyear(trajdata = trajfile) 
+    # Get rid of a column to save some space
+    trajfile <- subset(trajfile,select = -c(trajectory,diffs))
+    # Assign to list
+    file_it_list[[f]] <- trajfile
   }
+  # bind frame
+  message("Combining and exporting data. This may take a moment.")
+  traj_frame_bound <- rlist::list.rbind(file_it_list)
+  traj_frame_bound <- adjust_longitude(traj_frame_bound)
+  traj_frame_bound <- Add_traj_identifier(traj_frame_bound, ntraj_1 = TRUE)
+  traj_frame_bound <- subset(traj_frame_bound, select = -c(receptor,pressure,date.inc,diffs,date.inc))
+  # assign(paste0(site_names[i],"_72hr1TPD2000m_Reanalysis_1950_2022"),frame_tobind, envir = parent.frame())
+  write.csv(traj_frame_bound,paste0(export_dir,site_names[i],"_72hr1TPD2000m_Reanalysis_1950_2022.csv"), row.names = FALSE)
+  rm(traj_frame_bound)
+  rm(file_it_list)
+  gc()
+  message("...","\n",site_names[i]," compiled and exported")
 }
 
-
-for(i in seq_along(sites_it)){
-  message("Importing ", site_names[i], " data")
-  for(y in seq_along(years_it)){
-    # iterate along years
-    if(i == 1){
-      # This is PL; use PL dates
-      # import_dates <- datesrun_list_SC
-    } else if(i == 2){
-      # import_dates <- datesrun_list_PL
-    }
-    if(y == 1){
-      # import each year for that year.
-      trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
-      if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
-        # This means the year is busted. Subtract 100 years.
-        trajfile$year <- trajfile$year-100
-      }
-      trajfile <- subset(trajfile,select = -c(trajectory))
-      frame_tobind <<- trajfile
-      #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
-      #assign("frame_tobind", trajfile, envir = a)
-      #assign("frame_tobind", trajfile, envir = parent.frame())
-      message(paste0(site_names[i]," ",years[y]," imported"))
-    } else {
-      # import each year for that year.
-      trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
-      if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
-        # This means the year is busted. Subtract 100 years.
-        trajfile$year <- trajfile$year-100
-      }
-      trajfile <- subset(trajfile,select = -c(trajectory))
-      #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
-      newframe <- rbind(frame_tobind,trajfile)
-      frame_tobind <- newframe
-      #assign("frame_tobind", newframe, envir = parent.frame())
-      message(paste0(site_names[i]," ",years[y]," imported"))
-    }
-    # now make overall df with trajectory identifier
-    #rm(frame_tobind, envir = parent.frame())
-  }
-  # Lat/long adjustments. This replaces negative (West) lon values with 180+(diff)
-  frame_tobind <- adjust_longitude(frame_tobind)
-  frame_tobind <- Add_traj_identifier(frame_tobind, ntraj_1 = TRUE)
-  frame_tobind <- subset(frame_tobind, select = -c(receptor,pressure,date.inc,diffs,date.inc))
-  assign(paste0(site_names[i],"_72hr1TPD2000m_Reanalysis"),frame_tobind, envir = parent.frame())
-  message("...","\n",site_names[i]," imported")
-}
-# export
-write.csv(PL_72hr1TPD2000m_Reanalysis,paste0(export_dir,"PL_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
-write.csv(SC_72hr1TPD2000m_Reanalysis,paste0(export_dir,"SC_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
-# changes
-PL_72hr1TPD2000m_Reanalysis <- adjust_longitude(PL_72hr1TPD2000m_Reanalysis)
-SC_72hr1TPD2000m_Reanalysis <- adjust_longitude(SC_72hr1TPD2000m_Reanalysis)
+## OLD LOOP
+# 
+# for(i in seq_along(sites_it)){
+#   message("Importing ", site_names[i], " data")
+#   for(y in seq_along(years_it)){
+#     # iterate along years
+#     if(i == 1){
+#       # This is PL; use PL dates
+#       # import_dates <- datesrun_list_SC
+#     } else if(i == 2){
+#       # import_dates <- datesrun_list_PL
+#     }
+#     if(y == 1){
+#       # import each year for that year.
+#       trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
+#       if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
+#         # This means the year is busted. Subtract 100 years.
+#         trajfile$year <- trajfile$year-100
+#       }
+#       trajfile <- subset(trajfile,select = -c(trajectory))
+#       frame_tobind <<- trajfile
+#       #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
+#       #assign("frame_tobind", trajfile, envir = a)
+#       #assign("frame_tobind", trajfile, envir = parent.frame())
+#       message(paste0(site_names[i]," ",years[y]," imported"))
+#     } else {
+#       # import each year for that year.
+#       trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
+#       if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
+#         # This means the year is busted. Subtract 100 years.
+#         trajfile$year <- trajfile$year-100
+#       }
+#       trajfile <- subset(trajfile,select = -c(trajectory))
+#       #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
+#       newframe <- rbind(frame_tobind,trajfile)
+#       frame_tobind <- newframe
+#       #assign("frame_tobind", newframe, envir = parent.frame())
+#       message(paste0(site_names[i]," ",years[y]," imported"))
+#     }
+#     # now make overall df with trajectory identifier
+#     #rm(frame_tobind, envir = parent.frame())
+#   }
+#   # Lat/long adjustments. This replaces negative (West) lon values with 180+(diff)
+#   # traj_frame_bind <- rlist::rbind()
+#   frame_tobind <- adjust_longitude(frame_tobind)
+#   frame_tobind <- Add_traj_identifier(frame_tobind, ntraj_1 = TRUE)
+#   frame_tobind <- subset(frame_tobind, select = -c(receptor,pressure,date.inc,diffs,date.inc))
+#   assign(paste0(site_names[i],"_72hr1TPD2000m_Reanalysis"),frame_tobind, envir = parent.frame())
+#   message("...","\n",site_names[i]," imported")
+# }
+# # export
+# write.csv(PL_72hr1TPD2000m_Reanalysis,paste0(export_dir,"PL_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
+# write.csv(SC_72hr1TPD2000m_Reanalysis,paste0(export_dir,"SC_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
+# # changes
+# PL_72hr1TPD2000m_Reanalysis <- adjust_longitude(PL_72hr1TPD2000m_Reanalysis)
+# SC_72hr1TPD2000m_Reanalysis <- adjust_longitude(SC_72hr1TPD2000m_Reanalysis)
 
 
 ##### == SETUP: Mapping (Always Run) ==  #####
@@ -476,157 +456,6 @@ PL_JJ <- PL_72hr1TPD2000m_Reanalysis[which(
 #Get just the endpoints
 SC_72hr1TPD2000m_Reanalysis_Endpts <- SC_72hr1TPD2000m_Reanalysis[which(SC_72hr1TPD2000m_Reanalysis$hour.inc == -72),]
 PL_72hr1TPD2000m_Reanalysis_Endpts <- PL_72hr1TPD2000m_Reanalysis[which(PL_72hr1TPD2000m_Reanalysis$hour.inc == -72),]
-
-##### == [REANALYSIS] GENERAL AIRMASS PATTERNS: plots #####
-
-## In this section:
-# 1) Endpoint densities for both sites
-# 2) Summer airmass densities (all points)
-# 3) Winter airmass densities (all points)
-
-## Endpoint cloud: SC
-png(filename = paste0(export_dir,"SC_EndPointCloud.png"), units = "cm", height = 10, width = 15, res = 300)
-ggplot() +
-  EastAus_Zoomout_Basemap +
-  geom_point(data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  stat_density2d(
-    data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), size = 0.7, geom = "contour", colour = "grey12", alpha = 1) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "72-hour daily trajectory starting points to Sandy Cape 1950-1999") +
-  SC_point +
-  plot_themes_monthfill
-dev.off()
-## Endpoint cloud: PL
-png(filename = paste0(export_dir,"PL_EndPointCloud.png"), units = "cm", height = 10, width = 15, res = 300)
-ggplot() +
-  EastAus_Zoomout_Basemap +
-  geom_point(data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  stat_density2d(
-    data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), size = 0.7, geom = "contour", colour = "grey12", alpha = 1) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "72-hour daily trajectory starting points to Point Lookout 1950-1999") +
-  PL_point +
-  plot_themes_monthfill
-dev.off()
-
-## Summer point densities
-# SC
-png(filename = paste0(export_dir,"SC_Summer_Density.png"),units = "cm", height = 8, width = 7, res = 300)
-ggplot() +
-  EastAus_Zoomin_Basemap +
-  stat_density2d(
-    data = SC_DJF, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
-  #geom_point(data = SC_DJF, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "Summer Trajectory Point Density to SC") +
-  SC_point +
-  plot_themes_monthfill
-dev.off()
-# PL
-png(filename = paste0(export_dir,"PL_Summer_Density.png"),units = "cm", height = 8, width = 7, res = 300)
-ggplot() +
-  EastAus_Zoomin_Basemap +
-  stat_density2d(
-    data = PL_DJF, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
-  #geom_point(data = PL_DJF, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "Summer Trajectory Point Density to PL") +
-  PL_point +
-  plot_themes_monthfill
-dev.off()
-
-## Winter point densities
-# SC
-png(filename = paste0(export_dir,"SC_Winter_Density.png"),units = "cm", height = 8, width = 7, res = 300)
-ggplot() +
-  EastAus_Zoomin_Basemap +
-  stat_density2d(
-    data = SC_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
-  #geom_point(data = SC_JJ, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "Winter Trajectory Point Density to SC") +
-  SC_point +
-  plot_themes_monthfill
-dev.off()
-# PL
-png(filename = paste0(export_dir,"PL_Winter_Density.png"),units = "cm", height = 8, width = 7, res = 300)
-ggplot() +
-  EastAus_Zoomin_Basemap +
-  stat_density2d(
-    data = PL_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
-  #geom_point(data = PL_JJ, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  labs(title = "Winter Trajectory Point Density to PL") +
-  PL_point +
-  plot_themes_monthfill
-dev.off()
-
-## Full extent polygon testing (needs a better projection with larger map bounds)
-# from https://stats.stackexchange.com/questions/22805/how-to-draw-neat-polygons-around-scatterplot-regions-in-ggplot2
-#df <- SC_72hr1TPD2000m_Reanalysis[which(SC_72hr1TPD2000m_Reanalysis$hour.inc == -72),]
-#find_hull <- function(df) df[chull(df$lat, df$lon), ]
-#hulls <- find_hull(df)
-#png("test.png")
-#ggplot(data = df, aes(x = lon, y = lat)) +
-#  EastAus_Zoomout_Basemap +
-#  #geom_point() + 
-#  geom_polygon(data = hulls, alpha = 0.5) +
-#  labs(x = "lon", y = "lat")
-#dev.off()
-
-##### == [REANALYSIS] GENERAL AIRMASS PATTERNS: animations #####
-
-## Animations of endpoint spatial patterns
-# SC
-SC_Endpoint_densities <- ggplot() +
-  EastAus_Zoomout_Basemap +
-  geom_point(data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)),fill = "grey12", shape = 21, colour = "black", size = 0.5, alpha = 0.5) +
-  stat_density2d(
-    data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)), colour = "red", bins = 8, size = 1, geom = "contour", alpha = 0.8) +
-  geom_map(data = EastAus_Data, map = EastAus_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  SC_point +
-  plot_themes_monthfill +
-  labs(caption = "MH 18/03/21") 
-
-anim <- SC_Endpoint_densities +
-  # transition_reveal(along = month)
-  transition_states(starting_month) +
-  ease_aes('linear') +
-  ggtitle("starting_month: {closest_state}")
-anim_save("SC_Endpoint_Densities_MonthlyAnim.gif", anim)
-# PL
-PL_Endpoint_densities <- ggplot() +
-  EastAus_Zoomout_Basemap +
-  geom_point(data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)),fill = "grey12", shape = 21, colour = "black", size = 0.5, alpha = 0.5) +
-  stat_density2d(
-    data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)), colour = "red", bins = 8, size = 1, geom = "contour", alpha = 0.8) +
-  geom_map(data = EastAus_Data, map = EastAus_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  PL_point + 
-  plot_themes_monthfill +
-  labs(caption = "MH 18/03/21") 
-
-anim <- PL_Endpoint_densities +
-  # transition_reveal(along = month)
-  transition_states(starting_month) +
-  ease_aes('linear') +
-  ggtitle("starting_month: {closest_state}")
-anim_save("PL_Endpoint_Densities_MonthlyAnim.gif", anim)
 
 ##### == SETUP: Importing, sorting rainfall data and trajectories  == #####
 
@@ -1236,6 +1065,157 @@ for(i in seq_along(it_list)){
   rm(list = names(SOI_file_names)[i])
 }
 rm(SOI_file_names)
+
+##### == [REANALYSIS] GENERAL AIRMASS PATTERNS: plots #####
+
+## In this section:
+# 1) Endpoint densities for both sites
+# 2) Summer airmass densities (all points)
+# 3) Winter airmass densities (all points)
+
+## Endpoint cloud: SC
+png(filename = paste0(export_dir,"SC_EndPointCloud.png"), units = "cm", height = 10, width = 15, res = 300)
+ggplot() +
+  EastAus_Zoomout_Basemap +
+  geom_point(data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  stat_density2d(
+    data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), size = 0.7, geom = "contour", colour = "grey12", alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "72-hour daily trajectory starting points to Sandy Cape 1950-1999") +
+  SC_point +
+  plot_themes_monthfill
+dev.off()
+## Endpoint cloud: PL
+png(filename = paste0(export_dir,"PL_EndPointCloud.png"), units = "cm", height = 10, width = 15, res = 300)
+ggplot() +
+  EastAus_Zoomout_Basemap +
+  geom_point(data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  stat_density2d(
+    data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat), size = 0.7, geom = "contour", colour = "grey12", alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "72-hour daily trajectory starting points to Point Lookout 1950-1999") +
+  PL_point +
+  plot_themes_monthfill
+dev.off()
+
+## Summer point densities
+# SC
+png(filename = paste0(export_dir,"SC_Summer_Density.png"),units = "cm", height = 8, width = 7, res = 300)
+ggplot() +
+  EastAus_Zoomin_Basemap +
+  stat_density2d(
+    data = SC_DJF, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  #geom_point(data = SC_DJF, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Summer Trajectory Point Density to SC") +
+  SC_point +
+  plot_themes_monthfill
+dev.off()
+# PL
+png(filename = paste0(export_dir,"PL_Summer_Density.png"),units = "cm", height = 8, width = 7, res = 300)
+ggplot() +
+  EastAus_Zoomin_Basemap +
+  stat_density2d(
+    data = PL_DJF, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  #geom_point(data = PL_DJF, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Summer Trajectory Point Density to PL") +
+  PL_point +
+  plot_themes_monthfill
+dev.off()
+
+## Winter point densities
+# SC
+png(filename = paste0(export_dir,"SC_Winter_Density.png"),units = "cm", height = 8, width = 7, res = 300)
+ggplot() +
+  EastAus_Zoomin_Basemap +
+  stat_density2d(
+    data = SC_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  #geom_point(data = SC_JJ, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Winter Trajectory Point Density to SC") +
+  SC_point +
+  plot_themes_monthfill
+dev.off()
+# PL
+png(filename = paste0(export_dir,"PL_Winter_Density.png"),units = "cm", height = 8, width = 7, res = 300)
+ggplot() +
+  EastAus_Zoomin_Basemap +
+  stat_density2d(
+    data = PL_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  #geom_point(data = PL_JJ, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "red", size = 0.5, alpha = 0.5) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Winter Trajectory Point Density to PL") +
+  PL_point +
+  plot_themes_monthfill
+dev.off()
+
+## Full extent polygon testing (needs a better projection with larger map bounds)
+# from https://stats.stackexchange.com/questions/22805/how-to-draw-neat-polygons-around-scatterplot-regions-in-ggplot2
+#df <- SC_72hr1TPD2000m_Reanalysis[which(SC_72hr1TPD2000m_Reanalysis$hour.inc == -72),]
+#find_hull <- function(df) df[chull(df$lat, df$lon), ]
+#hulls <- find_hull(df)
+#png("test.png")
+#ggplot(data = df, aes(x = lon, y = lat)) +
+#  EastAus_Zoomout_Basemap +
+#  #geom_point() + 
+#  geom_polygon(data = hulls, alpha = 0.5) +
+#  labs(x = "lon", y = "lat")
+#dev.off()
+
+##### == [REANALYSIS] GENERAL AIRMASS PATTERNS: animations #####
+
+## Animations of endpoint spatial patterns
+# SC
+SC_Endpoint_densities <- ggplot() +
+  EastAus_Zoomout_Basemap +
+  geom_point(data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)),fill = "grey12", shape = 21, colour = "black", size = 0.5, alpha = 0.5) +
+  stat_density2d(
+    data = SC_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)), colour = "red", bins = 8, size = 1, geom = "contour", alpha = 0.8) +
+  geom_map(data = EastAus_Data, map = EastAus_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  SC_point +
+  plot_themes_monthfill +
+  labs(caption = "MH 18/03/21") 
+
+anim <- SC_Endpoint_densities +
+  # transition_reveal(along = month)
+  transition_states(starting_month) +
+  ease_aes('linear') +
+  ggtitle("starting_month: {closest_state}")
+anim_save("SC_Endpoint_Densities_MonthlyAnim.gif", anim)
+# PL
+PL_Endpoint_densities <- ggplot() +
+  EastAus_Zoomout_Basemap +
+  geom_point(data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)),fill = "grey12", shape = 21, colour = "black", size = 0.5, alpha = 0.5) +
+  stat_density2d(
+    data = PL_72hr1TPD2000m_Reanalysis_Endpts, aes(x = lon, y = lat, group = as.factor(starting_month)), colour = "red", bins = 8, size = 1, geom = "contour", alpha = 0.8) +
+  geom_map(data = EastAus_Data, map = EastAus_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  PL_point + 
+  plot_themes_monthfill +
+  labs(caption = "MH 18/03/21") 
+
+anim <- PL_Endpoint_densities +
+  # transition_reveal(along = month)
+  transition_states(starting_month) +
+  ease_aes('linear') +
+  ggtitle("starting_month: {closest_state}")
+anim_save("PL_Endpoint_Densities_MonthlyAnim.gif", anim)
 
 ##### == PRE-ANALYSIS: Compiling trajectory data = #####
 
