@@ -1,25 +1,17 @@
-# Examining precipiation-linked airmass changes in South-Eastern Queensland: Windows 7 version # 
+# Examining precipitation-linked airmass changes in South-Eastern Queensland: Windows 7 version # 
 
 # Matt Harris, GNS Science
 # Last updated 26/08/24
 # Contact: m.harris@gns.cri.nz
 
-# This version of the script is modified for the Chronos lab computer at UNSW, Sydney,
-#     which runs on Windows 7. To run on Windows 10, simply replace my altered 
-#     hysplit_trajectory_mod() function with hysplit_trajectory().
-
 # Note in 2024: The bugs in the splitr package that necessitated the rewrite of the hysplit_trajectory
 #     function have now been fixed. You should be able to run this script using splitr without 
 #     all the extra functions in this script.
 
-# Written and run in:
+# Written and run originally in:
 #   Rstudio v1.2.1335
 #   R v4.0.2
 #   Windows 7 (Professional) 
-
-# !!!! UPDATE 'last updated' FIELD ON EACH USE !!!! #
-
-# Refer to Master script for code snippets + notes. 
 
 ##### EXTERNAL RESOURCES #####
 
@@ -848,14 +840,13 @@ get_met_files <- function(files, path_met_files, ftp_dir) {
 ##### Updating trajectories to end of 2023 #####
 
 ## Section notes
-# Updating this data in 2024 because tbh why didn't I run it to 2020 at least? 
-# Runs now to go to end of 2023. 2023 was hanging for some reason, so I left it out.
+# Updating this data in 2024 because why didn't I run it to 2020 at least? 
+# Runs now to go to end of 2022. 2023 was hanging for some reason, so I left it out.
 
 ## Directories
 # met_dir_gdas <- "H:/DATA/HYSPLIT Files/GDAS1 Meteorological Data/"
 met_dir_reanalysis <- "E:/DATA/HYSPLIT Files/Reanalysis Meteorological Data/" 
 export_dir_years <- "C:/Users/matth/Desktop/University Files/mh phd 2020/grants and collaborations/JTibby via HCadd HYSPLIT/data/reanalysis/"
-
 
 # Functions required (always)
 convert_openair <- function(x) {

@@ -1,13 +1,12 @@
 # Comparing rainfall-biased airmass patterns at two sites in south eastern QLD #
 
-# Matt Harris, Keele University
-# Last updated 25/03/21
-# Contact: m.r.p.harris@keele.ac.uk
+# Matt Harris, GNS Science 
+# Last updated 12/09/24
+# Contact: m.harris@gns.cri.nz
 
 # Written and run in:
-#   Rstudio v1.3.959
-#   R v4.0.2
-#   Windows 10 (Education) 
+#   Rstudio v2024.04.2
+#   R v4.4.0
 
 ##### NOTES  #####
 
@@ -28,21 +27,28 @@
 library(pacman)
 
 # Load core packages. 
-pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggplot2, stringr)
+pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggplot2, stringr,here, tidyverse)
+
+# experimental
+p_load(openair)
+
+# Updated mapping package list
+p_load(maps,raster,mapdata)
 
 # poorly cleaned list of extra packages. These may or may not be required.
 # pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, raster, rgdal, mapproj, rgdal, ggplot2, rgeos, maps, readr, RColorBrewer, 
 #                gganimate, gifski, magick, png, transformr, viridis, marmap, ggmap, ggspatial, cowplot, mapdata, ggrepel, rnaturalearth, sf) # gif/gganimate packages
 
-
 # Set directories
 export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
-data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
-data_directory_gdas1 <- paste0(export_dir,"data/GDAS1/")
-wd <- export_dir
-setwd(wd)
+# data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
+# data_directory_gdas1 <- paste0(export_dir,"data/GDAS1/")
+proj_dir = "C:/Users/mharris/work/projects/active/Minjerribah Tibby/"
+setwd(proj_dir)
+
+
 # Set the directory where meteorological data is stored. Update as needed.
-met_dir_g_main <- "G:/DATA/HYSPLIT Files/GDAS1 Meteorological Data/"
+# met_dir_g_main <- "G:/DATA/HYSPLIT Files/GDAS1 Meteorological Data/"
 
 # Site latitudes and longitudes
 # Sand Cape, Fraser Island
@@ -52,176 +58,86 @@ SC_lon <- 153.21
 PL_lat <- -27.44
 PL_lon <- 153.55
 
-##### Trajectory data wrangling (creation of data frames for subsequent analysis) #####
+##### Get data and fns #####
 
 ## Section notes
-# Combining the data frames that will be used for analysis in subsequent sections.
+# Importing and collating data
 
+## Rainfall data for both sites.
+SC_rainfall_data <- read.csv(paste0(export_dir,"BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
+  mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
+  filter(Year >= 1950)
+PL_rainfall_data <- read.csv(paste0(export_dir, "BOM rainfall/PointLookout_Data.csv"), header = TRUE)
+PLB_rainfall_data <- read.csv(paste0(export_dir,"BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
+# Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
+BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
+PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
+  mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1)  %>%
+  filter(Year >= 1950)
 
-##### == PRE-ANALYSIS: Compiling trajectory data = #####
+# Nino 3.4 from NOAA. Anomalies, monthly.
+Nino3.4 = read.table(file = paste0(proj_dir,"data/NOAA-NINO3p4-Anom.txt")) %>%
+  mutate(across(everything(), ~ as.numeric(.))) %>%
+  mutate(across(everything(), ~na_if(.,-99.99))) %>%
+  # column_to_rownames("V1") %>%
+  'colnames<-'(c('Year',seq(1,12,1))) %>% 
+  pivot_longer(cols = c(2:13), names_to = c("Month"), values_to = "Nino3.4") %>%
+  mutate(across(everything(), ~ as.numeric(.))) %>%
+  mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1)
 
-## The code below was used to compile the original trajectory datasets.
+Nino3.4_ann <- Nino3.4 %>%
+  group_by(Year) %>%
+  summarise(avg = mean(Nino3.4)) %>%
+  filter(Year > 1949)
 
+## Trajectory data
+SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
 
-### REANALYSIS 1950:1999 ###
-# Required functions
-Add_traj_identifier <- function(x, ntraj_1 = FALSE){
-  # This function assumes that convert_openair() has been used on the dataset. 
-  x_new <- as.data.frame(x)
-  # Compute trajectory number. Starts at 1. 
-  if(!isTRUE(ntraj_1)){
-    x_new$start.time.minutes <- substr(x_new[,12],12,19)
-    x_new$start.time.minutes <- 60*24*as.numeric(chron::times(x_new$start.time.minutes))
-    x_new$trajectory <- cumsum(c(0, as.numeric(diff(x_new$start.time.minutes)) != 0)) + 1
-  } else {
-    x_new$diffs <- 1
-    x_new$diffs[2:nrow(x_new)] <- diff(x_new$hour.inc) 
-    x_new$trajectory <- cumsum(c(0,as.numeric(x_new$diffs[2:nrow(x_new)]) != -1)) + 1
-  }
-  #  x_new <<- as.data.frame(x)
-  x_new
-  #  rm(x_new, envir = parent.frame())
-}
-# adj longitude to adjust West (negative) values.
-adjust_longitude <- function(df){
-  df_new <- df
-  adj180_index <- df_new$lon < 0
-  df_new$lon[adj180_index] <- (180 + 180-abs(df_new$lon[adj180_index]))
-  df_new
-}
-
-## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
-# Load loop for SAR 1 to 7
-
-# This could absolutely be made more efficient but as it's only a once or twice-off, I'm going to leave the brute-force approach.
-fixyear <- function(trajdata,
-                    wrong_years = seq(2049,2099,1),
-                    replacement_years = seq(1949,1999,1)){
-  ## vars for intra-function testing
-  # trajdata = trajfile
-  # wrong_years = c(2049,2050)
-  # replacement_years = c(1949,1950)
-  ## Simple loop with gsub
-  yit_list = vector('list',length(wrong_years))
-  for(y in seq_along(wrong_years)){
-    # Fix each.
-    # gsub year column
-    trajdata$year[which(trajdata$year == wrong_years[y])] <- replacement_years[y]
-    # gsub date.inc column
-    trajdata$date.inc <- gsub(as.character(wrong_years[y]),as.character(replacement_years[y]),trajdata$date.inc)
-    # trajdata$date.inc <- gsub("2050","1950",trajdata$date.inc)
-  }
-  return(trajdata)
-}
-
-## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
-site_names <- c("SC","PL")
-years <- seq(1950,2022,1)
-sites_list <- vector(mode = "list", length = 2) %>% 'names<-'(c(site_names))
-years_it <- vector(mode = "list", length = length(years))
-# dates_run <- c("2020-11-27","2020-11-28",
-#                "2020-12-17","2020-12-18",
-#                "2024-08-26","2024-08-27")
-filename_years_list <- vector(mode = 'list', length = length(years))
-filename_years_list[c(1:length(years))] <- years
-# Get list of all files in the folder.
-target_file_list_short <- list.files(data_directory_reanalysis)
-target_file_list_long <- list.files(data_directory_reanalysis, full.names = T)
-# Loop
-for(i in seq_along(sites_list)){
-  # i = 1
-  this_site = site_names[i]
-  # Find files that start with this string
-  filestr <- unlist(lapply(strsplit(target_file_list_short,"-"),"[[",1))
-  files_this_it <- which(filestr == this_site)
-  # Ok, now loop through these files
-  file_it_list <- vector('list', length = length(files_this_it))
-  for(f in seq_along(file_it_list)){
-    # f = 1
-    message("Importing ",target_file_list_short[files_this_it[f]])
-    # Ok, now dealing with individual files.
-    trajfile <- read.csv(target_file_list_long[f], header = TRUE)
-    # In some instances the year and date.inc vars show wrong years. Notably 1949 always gets displayed as 2049.
-    # Applied on a bulk basis just in case doing it on the final frame would cause problems
-    trajfile <- fixyear(trajdata = trajfile) 
-    # Get rid of a column to save some space
-    trajfile <- subset(trajfile,select = -c(trajectory,diffs))
-    # Assign to list
-    file_it_list[[f]] <- trajfile
-  }
-  # bind frame
-  message("Combining and exporting data. This may take a moment.")
-  traj_frame_bound <- rlist::list.rbind(file_it_list)
-  traj_frame_bound <- adjust_longitude(traj_frame_bound)
-  traj_frame_bound <- Add_traj_identifier(traj_frame_bound, ntraj_1 = TRUE)
-  traj_frame_bound <- subset(traj_frame_bound, select = -c(receptor,pressure,date.inc,diffs,date.inc))
-  # assign(paste0(site_names[i],"_72hr1TPD2000m_Reanalysis_1950_2022"),frame_tobind, envir = parent.frame())
-  write.csv(traj_frame_bound,paste0(export_dir,site_names[i],"_72hr1TPD2000m_Reanalysis_1950_2022.csv"), row.names = FALSE)
-  rm(traj_frame_bound)
-  rm(file_it_list)
-  gc()
-  message("...","\n",site_names[i]," compiled and exported")
-}
-
-## OLD LOOP
+# plot(Nino3.4$Nino3.4, type = 'l')
 # 
-# for(i in seq_along(sites_it)){
-#   message("Importing ", site_names[i], " data")
-#   for(y in seq_along(years_it)){
-#     # iterate along years
-#     if(i == 1){
-#       # This is PL; use PL dates
-#       # import_dates <- datesrun_list_SC
-#     } else if(i == 2){
-#       # import_dates <- datesrun_list_PL
-#     }
-#     if(y == 1){
-#       # import each year for that year.
-#       trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
-#       if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
-#         # This means the year is busted. Subtract 100 years.
-#         trajfile$year <- trajfile$year-100
-#       }
-#       trajfile <- subset(trajfile,select = -c(trajectory))
-#       frame_tobind <<- trajfile
-#       #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
-#       #assign("frame_tobind", trajfile, envir = a)
-#       #assign("frame_tobind", trajfile, envir = parent.frame())
-#       message(paste0(site_names[i]," ",years[y]," imported"))
-#     } else {
-#       # import each year for that year.
-#       trajfile <- read.csv(paste0(data_directory_reanalysis,site_names[i],"-",years[y],"-",import_dates[y],"_72hr1TPD2000m.csv"), header = TRUE)
-#       if(as.numeric(substr(trajfile$year[1], 1, 1)) == 2){
-#         # This means the year is busted. Subtract 100 years.
-#         trajfile$year <- trajfile$year-100
-#       }
-#       trajfile <- subset(trajfile,select = -c(trajectory))
-#       #assign(paste0(site_names[i],"_",years[y]), trajfile, envir = parent.frame())
-#       newframe <- rbind(frame_tobind,trajfile)
-#       frame_tobind <- newframe
-#       #assign("frame_tobind", newframe, envir = parent.frame())
-#       message(paste0(site_names[i]," ",years[y]," imported"))
-#     }
-#     # now make overall df with trajectory identifier
-#     #rm(frame_tobind, envir = parent.frame())
-#   }
-#   # Lat/long adjustments. This replaces negative (West) lon values with 180+(diff)
-#   # traj_frame_bind <- rlist::rbind()
-#   frame_tobind <- adjust_longitude(frame_tobind)
-#   frame_tobind <- Add_traj_identifier(frame_tobind, ntraj_1 = TRUE)
-#   frame_tobind <- subset(frame_tobind, select = -c(receptor,pressure,date.inc,diffs,date.inc))
-#   assign(paste0(site_names[i],"_72hr1TPD2000m_Reanalysis"),frame_tobind, envir = parent.frame())
-#   message("...","\n",site_names[i]," imported")
-# }
-# # export
-# write.csv(PL_72hr1TPD2000m_Reanalysis,paste0(export_dir,"PL_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
-# write.csv(SC_72hr1TPD2000m_Reanalysis,paste0(export_dir,"SC_72hr1TPD2000m_Reanalysis_updated.csv"), row.names = FALSE)
-# # changes
-# PL_72hr1TPD2000m_Reanalysis <- adjust_longitude(PL_72hr1TPD2000m_Reanalysis)
-# SC_72hr1TPD2000m_Reanalysis <- adjust_longitude(SC_72hr1TPD2000m_Reanalysis)
+# # Monthly rainfall
+PL_monthly_rainfall <- PLCombined_rainfall_data %>%
+  group_by(Month_seq) %>%
+  summarise(month_mm = sum(Rainfall.amount..millimetres., na.rm = T), Year = unique(Year), Month = unique(Month))
+SC_monthly_rainfall <- SC_rainfall_data %>%
+  group_by(Month_seq) %>%
+  summarise(month_mm = sum(Rainfall.amount..millimetres., na.rm = T), Year = unique(Year), Month = unique(Month))
+# 
+# 
+# plot(PL_monthly_rainfall, type = 'l')
+
+## Functions 
+# For endpoints read in with trajectory_read. Here for posterity.
+convert_openair <- function(x) {
+  drop_columns_openair = c(
+    "lat_i","lon_i","theta","rainfall","mixdepth","rh","sp_humidity",
+    "h2o_mixrate","terr_msl","sun_flux", "air_temp"
+  )
+  x <- x[ , !(names(x) %in% drop_columns_openair)]
+  x$year = 2000 + x$year
+  x$receptor = 1
+  x <- x %>% rename(hour.inc = hour_along, date = traj_dt_i, date2 = traj_dt)
+}
+# For the exported CSVs
+format_for_openair <- function(my_trajectories){
+  # my_trajectories = SC_100mmRainfall_Trajectories
+  new_traj <- my_trajectories %>%
+    mutate(receptor = 1) %>%
+    mutate(pressure = NA) %>%
+    dplyr::select(-c(trajectory)) %>%
+    mutate(date.start = as.Date(date.start)) %>%
+    mutate(date = paste(date.start,"00:00:00")) %>%
+    mutate(date = as.POSIXct(date, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+    mutate(date2 = date + (hour.inc*3600)) %>%
+    # mutate(date = format(date, format = "%Y-%m-%d %H:%M:%S")) %>%
+    # mutate(date = ymd_hms(date)) %>%
+    dplyr::select(receptor,year,month,day,hour,hour.inc,lat,lon,height,pressure,date2,date)
+  return(new_traj)
+}
 
 
-##### == SETUP: Mapping (Always Run) ==  #####
+##### SETUP: Mapping (Always Run)  #####
 
 ## World data
 world <- map_data("worldHires")
@@ -240,12 +156,12 @@ EastAus_Data <- world %>%
 rect_data_eastaus <- matrix(c(min_lon,max_lon,min_lat,max_lat))
 EastAus_Full_Basemap <- list(
   geom_rect(aes(xmin = rect_data_eastaus[1]+5, xmax = rect_data_eastaus[2]-5, ymin = rect_data_eastaus[3]+5,ymax = rect_data_eastaus[4]-5), 
-            fill = "steelblue", alpha = 0.7),
+            fill = "white", alpha = 0.7),
   geom_map(data = EastAus_Data, map = EastAus_Data,
            aes(
              # x = long, y = lat, 
-               group = group, map_id = region),
-           fill = "white", colour = "#7f7f7f", size = 0.5),
+             group = group, map_id = region),
+           fill = "#d9d9d9", colour = "#7f7f7f", size = 0.5),
   coord_map("rectangular", lat0 = 0, xlim = c(min_lon+5,max_lon-5), ylim = c(min_lat+5, max_lat-5)),
   scale_x_continuous(
     expand = c(0,0), limits = c(min_lon+5,max_lon-5), breaks = seq(min_lon+5,max_lon-5, 25)),
@@ -274,12 +190,12 @@ EastAus_Zoomin_Basemap <- list(
                 xmax = rect_data_eastaus_zoomin[2]-5, 
                 ymin = rect_data_eastaus_zoomin[3]+5,
                 ymax = rect_data_eastaus_zoomin[4]-5), 
-            fill = "steelblue", alpha = 0.7),
+            fill = "white", alpha = 0.7),
   geom_map(data = EastAus_Zoomin_Data, map = EastAus_Zoomin_Data,
            aes(
              # x = long, y = lat, 
              group = group, map_id = region),
-           fill = "white", colour = "#7f7f7f", size = 0.5),
+           fill = "#d9d9d9", colour = "#7f7f7f", size = 0.5),
   coord_map("rectangular", lat0 = 0, xlim = c(min_lon+5,max_lon-5), ylim = c(min_lat+5, max_lat-5)),
   scale_x_continuous(
     expand = c(0,0), limits = c(min_lon+5,max_lon-5), breaks = seq(min_lon+5,max_lon-5, 25)),
@@ -308,12 +224,13 @@ EastAus_Zoomout_Basemap <- list(
                 xmax = rect_data_eastaus_zoomout[2]-5, 
                 ymin = rect_data_eastaus_zoomout[3]+5,
                 ymax = rect_data_eastaus_zoomout[4]-5), 
-            fill = "steelblue", alpha = 0.7),
+            fill = "white", alpha = 0.7),
+            # fill = "steelblue", alpha = 0.7),
   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
            aes(
              # x = long, y = lat, 
              group = group, map_id = region),
-           fill = "white", colour = "#7f7f7f", size = 0.5),
+           fill = "#d9d9d9", colour = "#7f7f7f", size = 0.5),
   coord_map("rectangular", lat0 = 0, xlim = c(min_lon+5,max_lon-5), ylim = c(min_lat+5, max_lat-5)),
   scale_x_continuous(
     expand = c(0,0), limits = c(min_lon+5,max_lon-5), breaks = seq(min_lon+5,max_lon-5, 25)),
@@ -371,6 +288,324 @@ ggplot() +
   plot_themes_monthfill
 #dev.off()
 
+
+##### KNMI export for rainfall data #####
+
+## Section notes
+# Making the rainfall data compliant with KNMI
+# This is all a distraction tbh
+
+#
+PL_KNMI_monthly <- PL_monthly_rainfall %>%
+  dplyr::select(c(Year,Month,month_mm)) %>%
+  filter(Year >= 1947) %>%
+  pivot_wider(names_from = Month, values_from = month_mm) %>%
+  mutate(across(everything(), ~ replace_na(., -999.9)))
+SC_KNMI_monthly <- SC_monthly_rainfall %>%
+  dplyr::select(c(Year,Month,month_mm)) %>%
+  filter(Year >= 1947) %>%
+  pivot_wider(names_from = Month, values_from = month_mm) %>%
+  mutate(across(everything(), ~ replace_na(., -999.9)))
+## Write files
+# write.table(PL_KNMI_monthly,file = "PL_KNMI_monthly.txt", row.names = F, col.names = F)
+# write.table(SC_KNMI_monthly,file = "SC_KNMI_monthly.txt", row.names = F, col.names = F)
+
+# Rainfall seasonal cycles
+SC_seasonal_cycle <- SC_KNMI_monthly %>%
+  column_to_rownames(var = "Year") %>%
+  colSums(.) 
+
+plot(x = seq(0.5,12.5,1), y = c(SC_seasonal_cycle,SC_seasonal_cycle[12]), type = 's')
+
+##### Parsing trajectories with rainfall thresholds #####
+
+
+# Specifically interested in large events here
+
+# Rainfall thresholds
+
+# Basic contour density plot of points from the two sites of 
+# 2) all > 100mm precipitation events
+# 3) Summer >100mm
+# 4) Winter >100mm 
+# 4) all >50mm precipitation events
+# 5) 
+# 2) all > 50mm precipitation events
+
+# Add an index
+PLCombined_rainfall_data$rnum <- seq.int(nrow(PLCombined_rainfall_data))
+SC_rainfall_data$rnum <- seq.int(nrow(SC_rainfall_data))
+
+# add similar starting date YYYY-MM-DD
+ymd_similar <- function(df){
+  new_df_temp <- df
+  new_df <- df
+  new_df_temp$month_pad <- stringr::str_pad(new_df_temp$Month,2,pad = "0")
+  new_df_temp$day_pad <- stringr::str_pad(new_df_temp$Day,2,pad = "0")
+  new_df$date_yyyymmdd <- paste0(new_df$Year,"-",new_df_temp$month_pad,"-",new_df_temp$day_pad)
+  new_df
+}
+SC_rainfall_data <- ymd_similar(SC_rainfall_data)
+PLCombined_rainfall_data <- ymd_similar(PLCombined_rainfall_data)
+
+## Sort for large rainfall events (>100mm)
+# SC
+SC_100mm <- SC_rainfall_data[which(!is.na(SC_rainfall_data$Rainfall.amount..millimetres.)),]
+SC_100mm <- SC_100mm[which(SC_100mm$Rainfall.amount..millimetres. >= 100),]
+# PL
+PL_100mm <- PLCombined_rainfall_data[which(!is.na(PLCombined_rainfall_data$Rainfall.amount..millimetres.)),]
+PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
+
+# Extract data which matches the dates of large rainfall events
+SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
+PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
+# SC_200mmLargeRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_200$date_yyyymmdd),]
+# PL_200mmLargeRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PLC_200$date_yyyymmdd),]
+
+# Get endpoints
+# SC_100mmRainfall_Endpts <- SC_100mmRainfall_Trajectories[which(SC_100mmRainfall_Trajectories$hour.inc == -72),]
+# PL_100mmRainfall_Endpts <- PL_100mmRainfall_Trajectories[which(PL_100mmRainfall_Trajectories$hour.inc == -72),]
+
+##### Trying to cluster with openair #####
+
+## Section notes
+# Doing my best to cluster with the openair package
+# test_traj <- openair::importTraj()
+
+# test_clus <- openair::trajCluster(test_traj)
+
+# t <- unlist(lapply(strsplit(test_clus$data$traj$cluster,"C"),"[[",2))
+# 
+# clus_ts_data <- test_clus$data$traj %>%
+#   ungroup() %>%
+#   filter(cluster == "C1") %>%
+#   filter(hour.inc == 0) %>%
+#   group_by(month) %>%
+#   summarise(n = n())
+
+# Ok, re-structuring some of our trajectory data
+SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
+PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
+
+## trajectory loops, saving data
+
+## NOTE: NEED TO CLEAN THE TRAJECTORY DATA FOR PL TO REMOVE THE VERY FAST OUTLIER. LOOK AT SPAGHETTI.
+# CAN USE WHICH() TO FIND ENTRIES WHERE LON < 115.
+## Removing outlier from PL
+PL_trimtraj <- PL_trimtraj %>%
+  filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
+
+## Consistent cluster plotting on the basemap
+# Perform a 5-cluster run for PL
+pl_5clus <- openair::trajCluster(traj = PL_trimtraj,
+                                 method = "Angle",
+                                 # orientation = c(90,0,160),
+                                 n.cluster = 5,
+                                 plot = FALSE)
+clus_pl_dat <- pl_5clus$data$results
+# Plot
+ggplot() +
+  EastAus_Full_Basemap +
+  #stat_density2d(
+  #  data = SC_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  # geom_path(data = SC_200mmLargeRainfall_Trajectories, aes(x = lon, y = lat, group = trajectory), colour = "yellow",size = 0.5, alpha = 0.8) +
+  # geom_point(data = SC_200mmLargeRainfall_Trajectories, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "yellow", size = 0.5, alpha = 0.5) +
+  # geom_point(data = SC_100mmRainfall_Endpts, aes(x = lon, y = lat), shape = 4, colour = "black", size = 1.2, alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Point Lookout >100mm rainfall event clusters (n = 5)") +
+  PL_point +
+  plot_themes_monthfill
+
+
+## Consistent cluster plotting on the basemap
+# Perform a 5-cluster run for SC
+sc_5clus <- openair::trajCluster(traj = SC_trimtraj,
+                                 method = "Angle",
+                                 # orientation = c(90,0,160),
+                                 n.cluster = 5,
+                                 plot = FALSE)
+clus_sc_dat <- sc_5clus$data$results
+# Plot
+ggplot() +
+  EastAus_Full_Basemap +
+  #stat_density2d(
+  #  data = SC_JJ, aes(x = lon, y = lat), size = 0.5, bins = 15, geom = "contour", alpha = 0.8, colour = "red") +
+  geom_path(data = clus_sc_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  # geom_path(data = SC_200mmLargeRainfall_Trajectories, aes(x = lon, y = lat, group = trajectory), colour = "yellow",size = 0.5, alpha = 0.8) +
+  # geom_point(data = SC_200mmLargeRainfall_Trajectories, aes(x = lon, y = lat), shape = 21, colour = "grey5", fill = "yellow", size = 0.5, alpha = 0.5) +
+  # geom_point(data = SC_100mmRainfall_Endpts, aes(x = lon, y = lat), shape = 4, colour = "black", size = 1.2, alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  labs(title = "Sandy Cape >100mm rainfall event clusters (n = 5)") +
+  PL_point +
+  plot_themes_monthfill
+
+
+##### Frequency data for five-trajectory groupings #####
+
+## Section notes
+# So, the 5-cluster results for each site are quite similar.
+# Are they similar numerically? That is, do each cluster have roughly equal distribution at each site.
+
+## Proportions
+sc_5clus_prop = data.frame(cluster = unique(sc_5clus$data$results$cluster),
+                           frequency = unique(sc_5clus$data$results$freq))
+
+
+## Print clusters in loop.
+# # SC
+# SC_test_dir <- paste0(proj_dir,"openair outputs/SC test/")
+# clist <- vector('list', 8)
+# for(i in seq_along(clist)){
+#   # i = 1
+#   message("Starting cluster ",i,"/",length(clist))
+#   png(filename = paste0(SC_test_dir,"SC_",i,"clusters.png"))
+#   openair::trajCluster(traj = SC_trimtraj,
+#                        method = "Euclid",
+#                        orientation = c(90,0,160),
+#                        n.cluster = i)
+#   dev.off()
+# }
+# # PL
+# PL_test_dir <- paste0(proj_dir,"openair outputs/PL test/")
+# clist <- vector('list', 8)
+# for(i in seq_along(clist)){
+#   # i = 1
+#   message("Starting cluster ",i,"/",length(clist))
+#   png(filename = paste0(PL_test_dir,"PL_",i,"clusters.png"))
+#   openair::trajCluster(traj = PL_trimtraj,
+#                        method = "Euclid",
+#                        orientation = c(90,0,160),
+#                        n.cluster = i)
+#   dev.off()
+# }
+# 
+# # Interesting that the patterns aren't apparently consistent with previous looks at the data
+# # 100mm spaghetti
+# # PL
+# png("SC_100mm_Spaghetti.png",units = "cm", height = 16, width = 15, res = 300)
+# ggplot() +
+#   EastAus_Full_Basemap +
+#   geom_path(data = SC_100mmRainfall_Trajectories, aes(x = lon, y = lat, group = trajectory),  size = 1, alpha = 0.7) +
+#   geom_map(data = EastAus_Data, map = EastAus_Data,
+#            aes(x = long, y = lat, group = group, map_id = region),
+#            fill = "transparent", colour = "grey8", size = 0.2) 
+# dev.off()
+# 
+# 
+# png("PL_100mm_Spaghetti.png",units = "cm", height = 16, width = 15, res = 300)
+# ggplot() +
+#   EastAus_Full_Basemap +
+#   geom_path(data = PL_100mmRainfall_Trajectories, aes(x = lon, y = lat, group = trajectory),  size = 1, alpha = 0.7) +
+#   geom_map(data = EastAus_Data, map = EastAus_Data,
+#            aes(x = long, y = lat, group = group, map_id = region),
+#            fill = "transparent", colour = "grey8", size = 0.2) 
+# dev.off()
+
+##### Cluster frequencies for each year #####
+
+## Section notes
+# Can we annualise this? 
+
+# Get data from test case run
+pl_5clus <- openair::trajCluster(traj = PL_trimtraj,
+                                 method = "Angle",
+                                 # orientation = c(90,0,160),
+                                 n.cluster = 4,
+                                 plot = FALSE)
+clus_dat <- pl_5clus$data$traj
+
+# Some code borrowed from the WIP trajSpatial frequency bits
+yearly_clus <- clus_dat %>%
+  filter(hour.inc == 0) %>%
+  group_by(year, cluster) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))
+
+PL_C1 <- yearly_clus %>% filter(cluster == "C1")
+
+test <- data.frame(year = seq(1950,2022,1),
+                   cluster = "C1")
+
+extract_cluster_ts <- function(trajdata,
+                               nclusters = seq(1,6,1),
+                               method = "Angle"){
+  
+  # trajdata = PL_trimtraj
+  # nclusters = seq(1,6,1)
+  # method = "Angle"
+  
+  # Need to extract the time series
+  if(length(nclusters) > 1){
+    clus_list <- as.list(nclusters)
+    clusdat <- vector('list',length(clus_list)) %>% 'names<-'(c(nclusters))
+    for(i in seq_along(clus_list)){
+      clus_it <- openair::trajCluster(traj = trajdata,
+                                             method = method,
+                                             # orientation = c(90,0,160),
+                                             n.cluster = clus_list[[i]],
+                                             plot = FALSE)
+      clusdat[[i]] <- clus_it$data$traj %>%
+        filter(hour.inc == 0) %>%
+        group_by(year, cluster) %>%
+        summarise(n = n()) %>%
+        mutate(freq = n / sum(n)) %>%
+        ungroup()
+    }
+  } else {
+    clus_it <- openair::trajCluster(traj = trajdata,
+                                    method = method,
+                                    # orientation = c(90,0,160),
+                                    n.cluster = nclusters,
+                                    plot = FALSE)
+    clusdat <- clus_it$data$traj %>%
+      filter(hour.inc == 0) %>%
+      group_by(year, cluster) %>%
+      summarise(n = n()) %>%
+      mutate(freq = n / sum(n)) %>%
+      ungroup()
+  }
+  return(clusdat)
+}
+
+PL_cluster_data <- extract_cluster_ts(PL_trimtraj,
+                                      nclusters = seq(1,6,1),
+                                      method = "Angle")
+
+
+# So, what am I actually trying to do with this data?
+# Need to compare frequency products to Nino 3.4 and 
+
+
+PL_C1_fill <- PL_C1 %>%
+  full_join(test) %>%
+  replace(is.na(.), 0) %>%
+  arrange(year)
+
+
+
+#fitler
+
+
+##### Consistent plotting of clusters #####
+
+# If the device won't kark it
+# while (!is.null(dev.list()))  dev.off()
+
+
+SC_clustest <- openair::trajCluster(traj = SC_trimtraj,
+                                    method = "Euclid",
+                                    n.cluster = 4)
+
+# jpeg(filename= paste("E:/Folder1/plot_",i,".png", sep= "")
+#      plot_i <- ggplot(Num, aes(Num[,i]))+ geom_histogram(fill="skyblue", col="Blue")+
+#        ggtitle(names(Num)[i])+theme_classic()
+#      print(plot_i)
+#      dev.off()
 
 ##### == SETUP: Importing and collating trajectory data ==  #####
 
@@ -473,6 +708,7 @@ PL_72hr1TPD2000m_Reanalysis_Endpts <- PL_72hr1TPD2000m_Reanalysis[which(PL_72hr1
 BOM_SC_rainfall_data <- read.csv(paste0(export_dir,"BOM rainfall/SandyCape_Data.csv"), header = TRUE)
 BOM_PL_rainfall_data <- read.csv(paste0(export_dir, "BOM rainfall/PointLookout_Data.csv"), header = TRUE)
 BOM_PLB_rainfall <- read.csv(paste0(export_dir,"BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
+
 
 # Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
 BOM_PLB_toadd <- BOM_PLB_rainfall[BOM_PLB_rainfall$Year <= 1996,]
