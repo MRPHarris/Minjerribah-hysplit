@@ -25,12 +25,13 @@ pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggp
 #                gganimate, gifski, magick, png, transformr, viridis, marmap, ggmap, ggspatial, cowplot, mapdata, ggrepel, rnaturalearth, sf) # gif/gganimate packages
 
 ## Set directories
+# Export directory: outputs will be sent here. Currently just a here() call.
+# export_dir <- paste0(here(),"/")
+export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
 # Data directory; data is imported from here.
 data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
 data_directory_gdas1 <- paste0(export_dir,"data/GDAS1/")
-# Export directory: outputs will be sent here. Currently just a here() call.
-export_dir <- paste0(here(),"/")
-# export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
+# wd etc
 wd <- export_dir
 setwd(wd)
 
@@ -118,7 +119,7 @@ target_file_list_short <- list.files(data_directory_reanalysis)
 target_file_list_long <- list.files(data_directory_reanalysis, full.names = T)
 # Loop
 for(i in seq_along(sites_list)){
-  i = 2
+  # i = 1
   this_site = site_names[i]
   # Find files that start with this string
   filestr <- unlist(lapply(strsplit(target_file_list_short,"-"),"[[",1))
@@ -129,7 +130,7 @@ for(i in seq_along(sites_list)){
     # f = 1
     message("Importing ",target_file_list_short[files_this_it[f]])
     # Ok, now dealing with individual files.
-    trajfile <- read.csv(target_file_list_long[f], header = TRUE)
+    trajfile <- read.csv(target_file_list_long[files_this_it[f]], header = TRUE)
     # In some instances the year and date.inc vars show wrong years. Notably 1949 always gets displayed as 2049.
     # Applied on a bulk basis just in case doing it on the final frame would cause problems
     trajfile <- fixyear(trajdata = trajfile) 
