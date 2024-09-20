@@ -22,10 +22,10 @@ p_load(maps, raster, mapdata, geosphere)
 #                gganimate, gifski, magick, png, transformr, viridis, marmap, ggmap, ggspatial, cowplot, mapdata, ggrepel, rnaturalearth, sf) # gif/gganimate packages
 
 ## Set directories
-export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
+# export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
 # data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
 # data_directory_gdas1 <- paste0(export_dir,"data/GDAS1/")
-proj_dir = "C:/Users/mharris/work/projects/active/Minjerribah Tibby/"
+proj_dir = "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/R project/"
 setwd(proj_dir)
 
 ## Functions 
@@ -105,12 +105,12 @@ theme_rem_xaxis <- theme(
 
 ## Get data: BOM Rainfall data
 ##Rainfall data for both sites.
-SC_rainfall_data <- read.csv(paste0(export_dir,"BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
+SC_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
   filter(Year >= 1950) %>%
   filter(Year <= 2023)
-PL_rainfall_data <- read.csv(paste0(export_dir, "BOM rainfall/PointLookout_Data.csv"), header = TRUE)
-PLB_rainfall_data <- read.csv(paste0(export_dir,"BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
+PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
+PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
 # Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
 BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
 PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
@@ -134,9 +134,10 @@ Nino3.4_ann <- Nino3.4 %>%
   filter(Year > 1949)
 
 ## Get trajectory data
-SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
-PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
-
+# Directory for data too big for github
+external_data_dir = "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/"
+SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
 
 ```
 
@@ -308,11 +309,13 @@ plot_themes_monthfill <- list(
 
 Kgari ENSO work
 
-"Is there a different spatial origin of precipitation to K'gari and/or Minjerribah during ENSO events?" 
+"Is there a different spatial origin of precipitation to K'gari and/or Minjerribah during ENSO phases?" 
 
-Trajectories were run daily for 1950 - 2022 using HYSPLIT. Release height of 2000 m, duration 72 hr, NCEP/NCAR Reanalysis data. Reanalysis product should be appropriate given that we are specifically interested in large (>100 mm) rainfall events, which typically involve synoptic-scale weather systems, and thus 2.5 degree data should be sufficient to capture these. There is some fairly severe uncertainty in the NCEP/NCAR reanalysis prior to the late 1970s (erroneous inverted integration of SH pressure buoy data).
+A contiguous suite of HYSPLIT atmospheric trajectory model runs were used to trace the atmospheric pathways of precipitation to K'gari and Minjerribah. Trajectories from each location were run backwards, daily, for 1950 - 2022. Release height of 2000 m, duration 72 hr, using NCEP/NCAR 2.5-degree reanalysis data.
 
 Rainall records from Sandy Cape and Point Lookout were used to filter the trajectories to those arriving at the sites on days where >100 mm of rainfall was recorded. Remaining trajectories were grouped into 5 clusters using an angle-based distance matrix based upon Sirois and Bottenheim (1995) through the openair package for R. Within-cluster frequencies were extracted and compared against the Nino3.4 index to determine possible spatial modulation by ENSO. A single outlier was removed from the Point Lookout trajectory dataset, with the trajectory associated with the rainfall event on 26/04/1956 consistently biasing the clustering calculations.
+
+*A note on NCEP/NCAR reanalysis data* The NCEP/NCAR reanalysis data is reasonably coarse but as the focus is on large (>100mm) events driven by (presumably) synoptic-scale dynamics, this product should be appropriate. There is some fairly severe uncertainty in the NCEP/NCAR reanalysis prior to the late 1970s (erroneous inverted integration of SH pressure buoy data).
 
 ```{r cluster-calcs, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
 ## Clustering for Sandy cape and point lookout.
@@ -404,82 +407,7 @@ pl_4clus$data$traj <- pl_4clus$data$traj %>%
 
 ```
 
-Frequencies were coerced to the annual scale to provide consistent 
-
-
-
-```{r cluster-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 14, units = cm}
-## Section notes
-# Plotting the cluster pathways for each site.
-
-twomap_scaling <- generate_plot_themes(12)
-
-## Sandy cape
-
-# Update plots with labels 
-# From each cluster termination point, find the bearing to the sc or pl point
-
-
-SC_clus_bearings <- clus_bearings(sc_4clus,
-                                  c(SC_lon,SC_lat)) %>%
-    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
-                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
-    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 4, 
-                           ifelse(bearing >= 225 & bearing <= 315, -4, 0)))
-PL_clus_bearings <- clus_bearings(pl_4clus,
-                                  c(PL_lon,PL_lat)) %>%
-    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
-                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
-    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 4, 
-                           ifelse(bearing >= 225 & bearing <= 315, -4, 0)))
-
-# Add label based on lat lon
-add_clabels <- function(clus_bearings){
-  #
-  # clus_bearings = SC_clus_bearings
-  #
-  clus_bearings <- clus_bearings %>%
-    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
-                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
-    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 2, 
-                           ifelse(bearing >= 225 & bearing <= 315, -2, 0)))
-
-  labels
-}
-
-clus_sc_dat <- sc_4clus$data$results
-sc_clusplot <- ggplot() +
-  EastAus_Full_Basemap +
-  geom_path(data = clus_sc_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  # labs(title = "Sandy Cape >100mm rainfall event clusters (n = 5)") +
-  SC_point +
-    geom_label(data = SC_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq, "%"))) +
-  twomap_scaling
-
-## Point lookout
-clus_pl_dat <- pl_4clus$data$results
-pl_clusplot <- ggplot() +
-  EastAus_Full_Basemap +
-  geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  # labs(title = "Point Lookout >100mm rainfall event clusters (n = 5)") +
-  geom_label(data = PL_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq,"%"))) +
-  PL_point +
-  twomap_scaling
-
-cowplot::plot_grid(sc_clusplot,
-                   pl_clusplot,
-                   nrow = 1, ncol = 2)
-
-
-```
-
-Fig 1. Trajectory clusters (n = 5) to Sandy Cape (left) and Point Lookout (right). Frequencies display the >100 mm within each cluster as a proportion of the total number at each site. Cluster names have no statistical significance and were designated to draw parity between each site where possible. Clusters are named based upon their approximate direction of travel. Note that this naming scheme (and any cluster designation method) is inherently and unavoidably reductive, and each cluster will be comprised of trajectories that, whilst similar spatially, will travel in different ways and from different directions. The clustering simply serves to reduce the dimensionality of the data in a meaningful way.
+Nino 3.4 SST anomaly data at monthly resolution was obtained [from NOAA](https://psl.noaa.gov/data/correlation/nina34.anom.data). Phase events (i.e. La Nina, El Nino, or neutral) were defined based on the [definition utilised by NOAA](https://www.ncei.noaa.gov/access/monitoring/enso/sst). That is, an El Nino event is a time period where the three-month-averaged-smoothed Nino3.4 anomaly timeseries exceeds a value of 0.5 for 5 months or more. La Nina, where the value falls below -0.5 for >5 months. A neutral period is used here to denote any time period where there is no El Nino or La Nina event occuring, as per the definition. 
 
 NINO3.4 time series
 
@@ -556,6 +484,8 @@ ggplot() +
   theme(plot.margin = margin(7,14,7,7))
 
 ```
+
+Fig. ENSO time series used for phase event definition.
 
 Rainfall time series
 
@@ -689,7 +619,145 @@ cowplot::plot_grid(SC_annual_rainplot,
 
 ```
 
-Cluster event time series (N/A for now)
+Monthly and annual total rainfall for Sandy Cape and Point Lookout between 1950 and 2022.
+
+To determine potential differences in the spatial dynamics of large event precipitation, trajectories from days where >100 mm of rain was recorded were grouped using cluster analysis. To prioritise the importance of backwards travel direction, and angle-based distance matrix calculation was used, based upon Sirois and Bottenheim (1995). Clustering was performed using the openair package in R. Four clusters were chosen in order to provide a balance between separation of disparate trajectories whilst not exacerbating the potential bias introduced by individual outlier trajectories as a result of the relatively small trajectory sample sizes (104 event trajectories for PL, 68 for SC). 
+
+```{r cluster-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 14, units = cm}
+## Section notes
+# Plotting the cluster pathways for each site.
+
+twomap_scaling <- generate_plot_themes(12)
+
+## Sandy cape
+
+# Update plots with labels 
+# From each cluster termination point, find the bearing to the sc or pl point
+
+
+SC_clus_bearings <- clus_bearings(sc_4clus,
+                                  c(SC_lon,SC_lat)) %>%
+    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
+                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
+    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 4, 
+                           ifelse(bearing >= 225 & bearing <= 315, -4, 0)))
+PL_clus_bearings <- clus_bearings(pl_4clus,
+                                  c(PL_lon,PL_lat)) %>%
+    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
+                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
+    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 4, 
+                           ifelse(bearing >= 225 & bearing <= 315, -4, 0)))
+
+# Add label based on lat lon
+add_clabels <- function(clus_bearings){
+  #
+  # clus_bearings = SC_clus_bearings
+  #
+  clus_bearings <- clus_bearings %>%
+    mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
+                           ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
+    mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 2, 
+                           ifelse(bearing >= 225 & bearing <= 315, -2, 0)))
+
+  labels
+}
+
+clus_sc_dat <- sc_4clus$data$results
+sc_clusplot <- ggplot() +
+  EastAus_Full_Basemap +
+  geom_path(data = clus_sc_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  # labs(title = "Sandy Cape >100mm rainfall event clusters (n = 5)") +
+  SC_point +
+    geom_label(data = SC_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq, "%"))) +
+  twomap_scaling
+
+## Point lookout
+clus_pl_dat <- pl_4clus$data$results
+pl_clusplot <- ggplot() +
+  EastAus_Full_Basemap +
+  geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  # labs(title = "Point Lookout >100mm rainfall event clusters (n = 5)") +
+  geom_label(data = PL_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq,"%"))) +
+  PL_point +
+  twomap_scaling
+
+cowplot::plot_grid(sc_clusplot,
+                   pl_clusplot,
+                   nrow = 1, ncol = 2)
+
+
+```
+
+Fig. Trajectory clusters (n = 4) to Sandy Cape (left) and Point Lookout (right). Frequencies display the >100 mm within each cluster as a proportion of the total number at each site. Cluster names have no statistical significance and were designated to draw parity between each site where possible. Clusters are named based upon their approximate direction of travel. Note that this naming scheme (and any cluster designation method) is inherently and unavoidably reductive, and each cluster will be comprised of trajectories that, whilst similar spatially, will travel in different ways and from different directions. The clustering simply serves to reduce the dimensionality of the data in a meaningful way.
+
+For the period of 2002 to present, daily BOM MSLP charts can be used to perform a very limited and selective interrogation of the behaviour of the model (i.e., are the pathways consistent with how we might expect airmasses to move along isobars).
+
+On 29/03/22, ~240 mm of rain was recorded at Point Lookout. Inspecting the BOM MSLP charts for this period shows a front associated with a fast-moving low-pressure cell moving down to PL from the tropics.
+
+```{r BOM-mslp-charts, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 14, units = cm}
+
+library(magick)
+library(cowplot)
+library(ggplot2)
+
+bom_img_dir <- paste0(proj_dir,"external images/")
+img_files <- list.files(bom_img_dir, full.names = T)
+
+
+p1 <- ggdraw() + draw_image(img_files[1], scale = 1)
+p2 <- ggdraw() + draw_image(img_files[2], scale = 1)
+p3 <- ggdraw() + draw_image(img_files[3], scale = 1)
+p4 <- ggdraw() + draw_image(img_files[4], scale = 1)
+p5 <- ggdraw() + draw_image(img_files[5], scale = 1)
+
+plot_grid(p1, p2, p3,
+          p4, p5, NULL,
+          nrow = 2, ncol = 3)
+
+
+
+```
+
+Fig. Five days of MSLP charts from BOM, 27/03/22 - 31/03/22.
+
+The trajectories from this period all behave as we might expect, moving anti-clockwise around the  high-pressure cell over the Tasman sea, before being perturbed by the low-pressure cell when it arrives at point lookout. The event trajectory for 29/03/22 was classified into the 'C-E' cluster. 
+
+```{r event-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 7, units = cm}
+## Section notes
+# Plotting the cluster pathways for each site.
+twomap_scaling <- generate_plot_themes(12)
+
+# After the single event on 29 Mar 2022 as it has satellite and synoptic chart coverage
+PL_event_20220329 <- PL_72hr1TPD2000m_Reanalysis %>%
+  filter(date.start %in% c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01","2022-04-02"))
+
+# Plot the event
+event_plot <- ggplot() +
+  EastAus_Full_Basemap +
+  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = as.factor(trajectory), colour = as.factor(trajectory)), size = 1, alpha = 1) +
+  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
+           aes(x = long, y = lat, group = group, map_id = region),
+           fill = "transparent", colour = "grey8", size = 0.2) +
+  scale_colour_brewer(name = 'YlGnBu', direction = -1,
+                      labels = c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01","2022-04-02")) +
+  guides(color = guide_legend("Date")) +
+  theme(legend.position = 'inside',
+        legend.position.inside = c(0.2,0.4)) +
+  PL_point 
+
+event_plot
+
+```
+
+Fig. Daily trajectory paths between 26/03/22 and 02/04/22. Lighter colours = later days.
+
+Hidden code block here for cluster time series WIP code. Insufficient sample size to do anything interesting at this stage.
 
 ```{r cluster-freq-timeseries, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 3, fig.width = 14, units = cm}
 ## Section notes
@@ -905,6 +973,8 @@ SC_CE_events <- sc_4clus$data$traj %>%
 
 ```
 
+#### Broad patterns in rainfall
+
 ```{r rainfall-proportion-crunching, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 11, units = cm}
 ## Section notes
 # Ok, so how do these vary in different phases?
@@ -1082,62 +1152,6 @@ rainfall_all_event_sums_norm <- PL_monthly_rainfall %>%
 
 ```
 
-Proportion (frequencies) overall
-
-```{r cluster-freq-crunching, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 11, units = cm}
-## Section notes
-# Ok, so how do these vary in different phases?
-
-# Start with mean composiion of trajectories.
-
-# Comparing ns
-total_traj_data <- length(which(pl_4clus$data$traj$cluster == "C-W"))/73
-
-# PL 
-PL_composition <- pl_4clus$data$results %>%
-  ungroup() %>%
-  filter(hour.inc == 0) %>%
-  dplyr::select(cluster,n,freq) %>%
-  mutate(site = "PL") %>%
-  mutate(n = n/73)
-# SC
-SC_composition <- sc_4clus$data$results %>%
-  ungroup() %>%
-  filter(hour.inc == 0) %>%
-  dplyr::select(cluster,n,freq)  %>%
-  mutate(site = "SC") %>%
-  mutate(n = n/73)
-# Both
-bulk_comp <- rbind(SC_composition,
-                   PL_composition) %>%
-  mutate(site = factor(site, levels = c("SC","PL")))
-
-
-freq_bar <- ggplot() + 
-  geom_bar(data = bulk_comp, aes(x = site, y = freq, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
-  scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
-    geom_text(data = bulk_comp, aes(x = site, y = freq, group = cluster, label = paste0(sprintf("%1.1f", freq),"%")),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
-  labs(x = "Site", y = "Frequency", fill = "Cluster") +
-  scale_y_continuous(expand = c(0,0))
-
-n_bar <- ggplot() + 
-  geom_bar(data = bulk_comp, aes(x = site, y = n, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
-  scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
-    geom_text(data = bulk_comp, aes(x = site, y = n, group = cluster, label = n),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
-  labs(x = "Site", y = "Number of events", fill = "Cluster") +
-  scale_y_continuous(expand = c(0,0))
-
-cowplot::plot_grid(freq_bar,n_bar,
-                   nrow = 1, ncol = 2)
-
-```
-
-Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! So, this 
-
 Rainfall proportions during different ENSO phases 
 
 ```{r rainfall-phase-bars, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 9, fig.width = 12, units = cm}
@@ -1214,9 +1228,71 @@ plot_grid(col1,col2,col3,col4,
 
 ```
 
-Proportion (frequencies) during different ENSO phases
+Fig. Mean rainfall at each site during ENSO phases. Top row is using the mean of all rainfall that falls during a given ENSO phase, and the lower row is restricted to the rainfall contributed to by large events. The right column plots are normalised by event duration (i.e. the results are not biased by longer phases, which will often inevitably exhibit greater rainfall totals). 
 
-```{r cluster-freq-proportions, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 14, units = cm}
+#### Broad patterns in large event trajectory travel
+
+Bulk groupings of cluster proportions for each site are displayed below, both in total (i.e. number of events) and as frequencies (i.e. percentages).
+
+```{r cluster-freq-crunching, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 11, units = cm}
+## Section notes
+# Ok, so how do these vary in different phases?
+
+# Start with mean composiion of trajectories.
+
+# Comparing ns
+total_traj_data <- length(which(pl_4clus$data$traj$cluster == "C-W"))/73
+
+# PL 
+PL_composition <- pl_4clus$data$results %>%
+  ungroup() %>%
+  filter(hour.inc == 0) %>%
+  dplyr::select(cluster,n,freq) %>%
+  mutate(site = "PL") %>%
+  mutate(n = n/73)
+# SC
+SC_composition <- sc_4clus$data$results %>%
+  ungroup() %>%
+  filter(hour.inc == 0) %>%
+  dplyr::select(cluster,n,freq)  %>%
+  mutate(site = "SC") %>%
+  mutate(n = n/73)
+# Both
+bulk_comp <- rbind(SC_composition,
+                   PL_composition) %>%
+  mutate(site = factor(site, levels = c("SC","PL")))
+
+
+freq_bar <- ggplot() + 
+  geom_bar(data = bulk_comp, aes(x = site, y = freq, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
+  scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
+    geom_text(data = bulk_comp, aes(x = site, y = freq, group = cluster, label = paste0(sprintf("%1.1f", freq),"%")),
+              position = position_stack(vjust = 0.5)) +
+  theme_cowplot(12) +
+  labs(x = "Site", y = "Frequency", fill = "Cluster") +
+  scale_y_continuous(expand = c(0,0))
+
+n_bar <- ggplot() + 
+  geom_bar(data = bulk_comp, aes(x = site, y = n, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
+  scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
+    geom_text(data = bulk_comp, aes(x = site, y = n, group = cluster, label = n),
+              position = position_stack(vjust = 0.5)) +
+  theme_cowplot(12) +
+  labs(x = "Site", y = "Number of events", fill = "Cluster") +
+  scale_y_continuous(expand = c(0,0))
+
+cowplot::plot_grid(freq_bar,n_bar,
+                   nrow = 1, ncol = 2)
+
+```
+
+Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! So, this 
+
+#### ENSO phase effect on trajectory travel
+
+Trajectory clusters were grouped by month (i.e., the same resolution as the Nino3.4 series and parsed into their respective ENSO phases. 
+
+```{r cluster-freq-proportions, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 12, fig.width = 14, units = cm}
 ## Section notes
 # Ok, so how do these vary in different phases?
 
@@ -1290,59 +1366,6 @@ cowplot::plot_grid(n_bar_enso,freq_bar_enso,
 
 ```
 
-Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! So, this 
+Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. 
 
-Rainfall correlations in different ENSO phases (with seasonal break down)
-
-Plotting specific trajectories
-
-
-
-```{r trajectory-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 7, units = cm}
-## Section notes
-# Plotting the cluster pathways for each site.
-
-twomap_scaling <- generate_plot_themes(12)
-
-## Sandy cape
-
-# Update plots with labels 
-# From each cluster termination point, find the bearing to the sc or pl point
-
-# After the single event on 29 Mar 2022 as it has satellite and synoptic chart coverage
-PL_event_20220329 <- PL_72hr1TPD2000m_Reanalysis %>%
-  # ungroup() %>%
-  filter(date.start %in% c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01"))
-
-# clus_sc_dat <- sc_4clus$data$results
-event_plot <- ggplot() +
-  EastAus_Full_Basemap +
-  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = trajectory, colour = trajectory), size = 1, alpha = 1) +
-  geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-           aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
-  # labs(title = "Sandy Cape >100mm rainfall event clusters (n = 5)") +
-  PL_point 
-  #   geom_label(data = SC_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq, "%"))) +
-  # twomap_scaling
-# 
-# ## Point lookout
-# clus_pl_dat <- pl_4clus$data$results
-# pl_clusplot <- ggplot() +
-#   EastAus_Full_Basemap +
-#   geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
-#   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
-#            aes(x = long, y = lat, group = group, map_id = region),
-#            fill = "transparent", colour = "grey8", size = 0.2) +
-#   # labs(title = "Point Lookout >100mm rainfall event clusters (n = 5)") +
-#   geom_label(data = PL_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq,"%"))) +
-#   PL_point +
-#   twomap_scaling
-
-# cowplot::plot_grid(sc_clusplot,
-#                    pl_clusplot,
-#                    nrow = 1, ncol = 2)
-event_plot
-
-```
 

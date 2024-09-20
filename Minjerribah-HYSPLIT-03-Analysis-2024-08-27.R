@@ -1,5 +1,7 @@
 # Comparing rainfall-biased airmass patterns at two sites in south eastern QLD #
 
+# This is an extremely messy WIP doc used to test code for the 'reporting' .rmd file.
+
 # Matt Harris, GNS Science 
 # Last updated 12/09/24
 # Contact: m.harris@gns.cri.nz
@@ -607,6 +609,7 @@ SC_clustest <- openair::trajCluster(traj = SC_trimtraj,
 #      print(plot_i)
 #      dev.off()
 
+##### Old code below this section #####
 ##### == SETUP: Importing and collating trajectory data ==  #####
 
 # Required functions
