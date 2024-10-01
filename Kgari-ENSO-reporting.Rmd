@@ -1186,7 +1186,9 @@ rain_bar_themes <- list(
 # Four figures:
 # First, total mean rainfall during ENSO phases.
 rainfall_hist <- ggplot() + 
-  geom_bar(data = rainfall_all_event_sums %>% filter(!is.na(ENSO_phase)), 
+  geom_bar(data = rainfall_all_event_sums %>% 
+             filter(!is.na(ENSO_phase)) %>%
+             mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
   labs(x = "Site", y = "Mean rainfall (mm)", title = "Mean rainfall per ENSO phase") +
   rain_bar_themes +
@@ -1194,7 +1196,9 @@ rainfall_hist <- ggplot() +
 
 # Next, total mean rainfall during ENSO phases, normalised by phase duration in months
 rainfall_norm_hist  <- ggplot() + 
-  geom_bar(data = rainfall_all_event_sums_norm %>% filter(!is.na(ENSO_phase)), 
+  geom_bar(data = rainfall_all_event_sums_norm %>% 
+             filter(!is.na(ENSO_phase)) %>%
+             mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
   labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean rainfall per ENSO phase-month","\n","(duration normalised)")) +
   rain_bar_themes +
@@ -1202,7 +1206,9 @@ rainfall_norm_hist  <- ggplot() +
 
 # Next, total mean rainfall from >100 mm events during ENSO events.
 largerainfall_hist  <- ggplot() + 
-  geom_bar(data = rainfall_100mm_event_sums %>% filter(!is.na(ENSO_phase)), 
+  geom_bar(data = rainfall_100mm_event_sums %>% 
+             filter(!is.na(ENSO_phase)) %>%
+             mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
   labs(x = "Site", y = "Mean rainfall (mm)", title = "Mean large event rainfall per ENSO phase") +
   rain_bar_themes +
@@ -1210,7 +1216,9 @@ largerainfall_hist  <- ggplot() +
 
 # Finally, as above but normalised by phase duration in months.
 largerainfall_norm_hist  <- ggplot() + 
-  geom_bar(data = rainfall_100mm_event_sums_norm %>% filter(!is.na(ENSO_phase)), 
+  geom_bar(data = rainfall_100mm_event_sums_norm %>% 
+             filter(!is.na(ENSO_phase)) %>%
+             mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
   labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean large event rainfall per ENSO phase-month","\n","(duration normalised)")) +
   rain_bar_themes +
@@ -1218,7 +1226,9 @@ largerainfall_norm_hist  <- ggplot() +
 
 # for seperate legend
 largerainfall_norm_hist_leg  <- ggplot() + 
-  geom_bar(data = rainfall_100mm_event_sums_norm %>% filter(!is.na(ENSO_phase)), 
+  geom_bar(data = rainfall_100mm_event_sums_norm %>% 
+             filter(!is.na(ENSO_phase)) %>%
+             mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
   labs(fill = "ENSO phase") +
   rain_bar_themes
