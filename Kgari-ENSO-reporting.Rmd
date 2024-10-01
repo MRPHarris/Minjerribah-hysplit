@@ -7,29 +7,23 @@ output: word_document
 ```{r setup-main, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
 ## SETUP CHUNK
 
-# Load pacman for pacman::p_load() 
+## Get pacman for pacman::p_load() 
 library(pacman)
 
-# Load core packages. 
+## Load core packages. 
 p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggplot2, stringr, here, tidyverse, cowplot, ggh4x,forecast,
        RColorBrewer)
 
 # Updated mapping package list
 p_load(maps, raster, mapdata, geosphere)
 
-## poorly cleaned list of extra packages. These may or may not be required.
-# pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, raster, rgdal, mapproj, rgdal, ggplot2, rgeos, maps, readr, RColorBrewer, 
-#                gganimate, gifski, magick, png, transformr, viridis, marmap, ggmap, ggspatial, cowplot, mapdata, ggrepel, rnaturalearth, sf) # gif/gganimate packages
-
 ## Set directories
-# export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
-# data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
-# data_directory_gdas1 <- paste0(export_dir,"data/GDAS1/")
-proj_dir = "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/R project/"
+## All paths are specified relative to the proj_dir.
+proj_dir = paste0(here(),"/")
 setwd(proj_dir)
 
 ## Functions 
-# For endpoints read in with trajectory_read. Here for posterity.
+# For splitr endpoints read in with trajectory_read. Not used; here for posterity (used at some prior step in the workflow - see the 'runmodels' or 'analysis' scripts).
 convert_openair <- function(x) {
   drop_columns_openair = c(
     "lat_i","lon_i","theta","rainfall","mixdepth","rh","sp_humidity",
@@ -65,20 +59,16 @@ ymd_similar <- function(df){
   new_df$date_yyyymmdd <- paste0(new_df$Year,"-",new_df_temp$month_pad,"-",new_df_temp$day_pad)
   new_df
 }
-# Calculate bearings from cluster termination points to specified point.
+# Calculate bearings from cluster termination points to specified point. Used to offset plot labels based on angle to sites.
 clus_bearings <- function(cluster_results,
                           target_point){
-  # vars for intra-function testing
-  # cluster_results = sc_4clus
-  # target_point = c(SC_lon,SC_lat)
-  #
   cluster_tpoints = cluster_results$data$results %>% 
     filter(hour.inc == -72) %>% 
     ungroup()
   clus_tpoint_data = cluster_tpoints %>% 
     dplyr::select(c(cluster,lat,lon, freq)) %>%
     mutate(bearing = NA)
-  plist <- vector('list', length = nrow(clus_tpoint_data))
+  plist <- vector('list', length = nrow(clus_tpoint_data)) 
   for(p in seq_along(plist)){
     this_lon = clus_tpoint_data$lon[p]
     this_lat = clus_tpoint_data$lat[p]
@@ -88,10 +78,10 @@ clus_bearings <- function(cluster_results,
 }
 
 ## Site latitudes and longitudes
-# Sand Cape, Fraser Island
+# Sandy Cape, K'gari (Fraser Island)
 SC_lat <- -24.73
 SC_lon <- 153.21
-# Point Lookout, North Stradbroke Island
+# Point Lookout, Minjerribah (North Stradbroke Island)
 PL_lat <- -27.44
 PL_lon <- 153.55
 
@@ -104,14 +94,14 @@ theme_rem_xaxis <- theme(
 )
 
 ## Get data: BOM Rainfall data
-##Rainfall data for both sites.
+## Rainfall data for both sites.
 SC_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
   filter(Year >= 1950) %>%
   filter(Year <= 2023)
 PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
 PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
-# Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
+## Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
 BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
 PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1)  %>%
@@ -134,10 +124,11 @@ Nino3.4_ann <- Nino3.4 %>%
   filter(Year > 1949)
 
 ## Get trajectory data
-# Directory for data too big for github
-external_data_dir = "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/"
-SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
-PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+## Directory for data too big for github
+## NB: the need for these datasets to produce the figures/clusters has been removed, as the data parsing to narrow down to 100mm events is now done in the 'cluster-calcs' code block. Happy to supply these as a onedrive/googledrive link if needed. 
+# external_data_dir = "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/"
+# SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+# PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(external_data_dir,"PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
 
 ```
 
@@ -318,35 +309,51 @@ Rainall records from Sandy Cape and Point Lookout were used to filter the trajec
 *A note on NCEP/NCAR reanalysis data* The NCEP/NCAR reanalysis data is reasonably coarse but as the focus is on large (>100mm) events driven by (presumably) synoptic-scale dynamics, this product should be appropriate. There is some fairly severe uncertainty in the NCEP/NCAR reanalysis prior to the late 1970s (erroneous inverted integration of SH pressure buoy data).
 
 ```{r cluster-calcs, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
-## Clustering for Sandy cape and point lookout.
+## Section notes
+# Cluster calculations for trajectories for both sites.
+# First some (now single-hashed, but left here for posterity) cutting and dicing is done on the large, daily trajectory datasets to narrow them down to 100mm events for each site. These files are >100 MB so can't be uploaded to github; thus cut + diced data frames are saved as txt files. These are read in in the current version of the script and used for the clustering. 
 
 ## First, rainfall parsing
-# Add an index
+## Add an index
 PLCombined_rainfall_data$rnum <- seq.int(nrow(PLCombined_rainfall_data))
 SC_rainfall_data$rnum <- seq.int(nrow(SC_rainfall_data))
-
 SC_rainfall_data <- ymd_similar(SC_rainfall_data)
 PLCombined_rainfall_data <- ymd_similar(PLCombined_rainfall_data)
 
 ## Sort for large rainfall events (>100mm)
-# SC
+## SC
 SC_100mm <- SC_rainfall_data[which(!is.na(SC_rainfall_data$Rainfall.amount..millimetres.)),]
 SC_100mm <- SC_100mm[which(SC_100mm$Rainfall.amount..millimetres. >= 100),]
-# PL
+## PL
 PL_100mm <- PLCombined_rainfall_data[which(!is.na(PLCombined_rainfall_data$Rainfall.amount..millimetres.)),]
 PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
 
-# Extract data which matches the dates of large rainfall events
-SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
-PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
+## Extract data which matches the dates of large rainfall events
+# SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
+# PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
 
 ## Restructuring for cluster analysis
-SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
-PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
+# SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
+# PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
 
 ## Removing outlier from Point lookout dataset
-PL_trimtraj <- PL_trimtraj %>%
-  filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
+# PL_trimtraj <- PL_trimtraj %>%
+#   filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
+
+## Save this data to remove the need to constantly re-load the 100MB trajectory datasets. Contact Matt (m.harris@gns.cri.nz) if you need the daily run data.
+## Saved as .txt because for some reason R doesn't like reading in midnight datetime entries from a csv, and removes the 00:00:00. This causes the cluster calcs to fail (I don't know why).
+# write_delim(SC_trimtraj,
+#             file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
+#             delim = '\t') 
+# write_delim(PL_trimtraj,
+#             file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
+#             delim = '\t')
+
+## Read the 100mm tab-delim text files  for cluster analysis
+SC_trimtraj <- read_delim(file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
+            delim = '\t', show_col_types = F) %>% 'rownames<-'(c(seq(1,nrow(.),1)))
+PL_trimtraj <- read_delim(file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
+            delim = '\t', show_col_types = F) %>% 'rownames<-'(c(seq(1,nrow(.),1)))
 
 ## Performing cluster analysis
 pl_4clus <- openair::trajCluster(traj = PL_trimtraj,
@@ -359,6 +366,7 @@ sc_4clus <- openair::trajCluster(traj = SC_trimtraj,
                                  # orientation = c(90,0,160),
                                  n.cluster = 4,
                                  plot = FALSE)
+
 ## Now need to recode these so that they're consistent visually in some manner.
 ## Going to name them based on direction.
 ## Nested ifelse (I apologise).
@@ -730,12 +738,22 @@ The trajectories from this period all behave as we might expect, moving anti-clo
 
 ```{r event-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 7, units = cm}
 ## Section notes
-# Plotting the cluster pathways for each site.
+## Plotting the cluster pathways for each site.
 twomap_scaling <- generate_plot_themes(12)
 
-# After the single event on 29 Mar 2022 as it has satellite and synoptic chart coverage
-PL_event_20220329 <- PL_72hr1TPD2000m_Reanalysis %>%
-  filter(date.start %in% c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01","2022-04-02"))
+## After the single event on 29 Mar 2022 as it has satellite and synoptic chart coverage
+# PL_event_20220329 <- PL_72hr1TPD2000m_Reanalysis %>%
+#   filter(date.start %in% c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01","2022-04-02"))
+
+## Saving as tab delim text
+# write_delim(PL_event_20220329, 
+#             file = paste0(proj_dir,"data/traj/PL_event_20220329.txt"),
+#             delim = "\t")
+
+## Reading back in
+PL_event_20220329 <- read_delim(file = paste0(proj_dir,"data/traj/PL_event_20220329.txt"),
+                                delim = "\t",
+                                show_col_types = F)
 
 # Plot the event
 event_plot <- ggplot() +
