@@ -1,7 +1,7 @@
 # Collation script for trajectory data used in the Minjerribah and K'gari hysplit analysis
 
 # Matt Harris, GNS Science
-# Last updated 2024-09-10
+# Last updated 2024-10-01
 # Contact: m.harris@gns.cri.nz
 # github.com/MRPHarris
 
@@ -25,8 +25,7 @@ pacman::p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggp
 #                gganimate, gifski, magick, png, transformr, viridis, marmap, ggmap, ggspatial, cowplot, mapdata, ggrepel, rnaturalearth, sf) # gif/gganimate packages
 
 ## Set directories
-# Export directory: outputs will be sent here. Currently just a here() call.
-# export_dir <- paste0(here(),"/")
+# Export directory: outputs will be sent here. 
 export_dir <- "E:/mh work live 2024-06-23/JTibby via HCadd HYSPLIT/"
 # Data directory; data is imported from here.
 data_directory_reanalysis <- paste0(export_dir,"data/reanalysis/")
@@ -51,7 +50,6 @@ PL_lon <- 153.55
 ##### == PRE-ANALYSIS: Compiling trajectory data = #####
 
 ## The code below was used to compile the original trajectory datasets.
-
 
 ### REANALYSIS 1950:1999 ###
 # Required functions
@@ -81,7 +79,6 @@ adjust_longitude <- function(df){
 }
 
 ## Importing (ONLY RUN IF RE-TARGETING RAW DATA. IF NOT, IMPORT COLLATED .CSVs)
-# Load loop for SAR 1 to 7
 
 # This could absolutely be made more efficient but as it's only a once or twice-off, I'm going to leave the brute-force approach.
 fixyear <- function(trajdata,
