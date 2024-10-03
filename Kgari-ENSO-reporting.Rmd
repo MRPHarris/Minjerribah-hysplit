@@ -21,61 +21,11 @@ p_load(maps, raster, mapdata, geosphere)
 ## All paths are specified relative to the proj_dir.
 proj_dir = paste0(here(),"/")
 setwd(proj_dir)
+tiff_dir <- paste0(proj_dir,"figure TIFFs/")
 
 ## Functions 
-# For splitr endpoints read in with trajectory_read. Not used; here for posterity (used at some prior step in the workflow - see the 'runmodels' or 'analysis' scripts).
-convert_openair <- function(x) {
-  drop_columns_openair = c(
-    "lat_i","lon_i","theta","rainfall","mixdepth","rh","sp_humidity",
-    "h2o_mixrate","terr_msl","sun_flux", "air_temp"
-  )
-  x <- x[ , !(names(x) %in% drop_columns_openair)]
-  x$year = 2000 + x$year
-  x$receptor = 1
-  x <- x %>% rename(hour.inc = hour_along, date = traj_dt_i, date2 = traj_dt)
-}
-# For the exported CSVs. Used before clustering.
-format_for_openair <- function(my_trajectories){
-  # my_trajectories = SC_100mmRainfall_Trajectories
-  new_traj <- my_trajectories %>%
-    mutate(receptor = 1) %>%
-    mutate(pressure = NA) %>%
-    dplyr::select(-c(trajectory)) %>%
-    mutate(date.start = as.Date(date.start)) %>%
-    mutate(date = paste(date.start,"00:00:00")) %>%
-    mutate(date = as.POSIXct(date, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
-    mutate(date2 = date + (hour.inc*3600)) %>%
-    # mutate(date = format(date, format = "%Y-%m-%d %H:%M:%S")) %>%
-    # mutate(date = ymd_hms(date)) %>%
-    dplyr::select(receptor,year,month,day,hour,hour.inc,lat,lon,height,pressure,date2,date)
-  return(new_traj)
-}
-# For rainfall-trajectory date matching. Adds similar starting date YYYY-MM-DD
-ymd_similar <- function(df){
-  new_df_temp <- df
-  new_df <- df
-  new_df_temp$month_pad <- stringr::str_pad(new_df_temp$Month,2,pad = "0")
-  new_df_temp$day_pad <- stringr::str_pad(new_df_temp$Day,2,pad = "0")
-  new_df$date_yyyymmdd <- paste0(new_df$Year,"-",new_df_temp$month_pad,"-",new_df_temp$day_pad)
-  new_df
-}
-# Calculate bearings from cluster termination points to specified point. Used to offset plot labels based on angle to sites.
-clus_bearings <- function(cluster_results,
-                          target_point){
-  cluster_tpoints = cluster_results$data$results %>% 
-    filter(hour.inc == -72) %>% 
-    ungroup()
-  clus_tpoint_data = cluster_tpoints %>% 
-    dplyr::select(c(cluster,lat,lon, freq)) %>%
-    mutate(bearing = NA)
-  plist <- vector('list', length = nrow(clus_tpoint_data)) 
-  for(p in seq_along(plist)){
-    this_lon = clus_tpoint_data$lon[p]
-    this_lat = clus_tpoint_data$lat[p]
-    clus_tpoint_data$bearing[p] = ((bearing(target_point, c(this_lon,this_lat)) + 360) %% 360)
-  }
-  clus_tpoint_data
-}
+# Source fn file
+source(file = paste0(proj_dir,"scripts/functions.R"), echo = FALSE)
 
 ## Site latitudes and longitudes
 # Sandy Cape, K'gari (Fraser Island)
@@ -86,27 +36,7 @@ PL_lat <- -27.44
 PL_lon <- 153.55
 
 ## Non-mapping themes
-theme_rem_xaxis <- theme(
-  axis.text.x = element_blank(),
-  axis.line.x = element_blank(),
-  axis.title.x = element_blank(),
-  axis.ticks.x = element_blank()
-)
-
-## Get data: BOM Rainfall data
-## Rainfall data for both sites.
-SC_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
-  mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
-  filter(Year >= 1950) %>%
-  filter(Year <= 2023)
-PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
-PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
-## Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
-BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
-PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
-  mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1)  %>%
-  filter(Year >= 1950) %>%
-  filter(Year <= 2023)
+source(file = paste0(proj_dir,"themes/Plotting_themes.R"), echo = F)
 
 ## Nino 3.4 from NOAA. Anomalies, monthly.
 Nino3.4 = read.table(file = paste0(proj_dir,"data/NOAA-NINO3p4-Anom.txt")) %>%
@@ -157,7 +87,7 @@ EastAus_Full_Basemap <- list(
            aes(
              # x = long, y = lat, 
              group = group, map_id = region),
-           fill = "#d9d9d9", colour = "#7f7f7f", size = 0.5),
+           fill = "#d9d9d9", colour = "#7f7f7f", size = 0.25),
   coord_map("rectangular", lat0 = 0, xlim = c(min_lon+5,max_lon-5), ylim = c(min_lat+5, max_lat-5)),
   scale_x_continuous(
     expand = c(0,0), limits = c(min_lon+5,max_lon-5), breaks = seq(min_lon+5,max_lon-5, 25)),
@@ -308,10 +238,129 @@ Rainall records from Sandy Cape and Point Lookout were used to filter the trajec
 
 *A note on NCEP/NCAR reanalysis data* The NCEP/NCAR reanalysis data is reasonably coarse but as the focus is on large (>100mm) events driven by (presumably) synoptic-scale dynamics, this product should be appropriate. There is some fairly severe uncertainty in the NCEP/NCAR reanalysis prior to the late 1970s (erroneous inverted integration of SH pressure buoy data).
 
-```{r cluster-calcs, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
+```{r rainfall-data-crunching, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
 ## Section notes
-# Cluster calculations for trajectories for both sites.
-# First some (now single-hashed, but left here for posterity) cutting and dicing is done on the large, daily trajectory datasets to narrow them down to 100mm events for each site. These files are >100 MB so can't be uploaded to github; thus cut + diced data frames are saved as txt files. These are read in in the current version of the script and used for the clustering. 
+# Rainfall data crunching including figuring out how to handle >100 mm rainfall events if they are spanning multiple days. 
+
+## Get data: BOM Rainfall data
+## SC
+# SC_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/SandyCape_Data.csv"), header = TRUE) %>%
+#   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
+#   mutate(rnum = seq.int(nrow(.))) %>%
+#   ymd_similar()
+# write_delim(SC_rainfall_data,file = paste0(proj_dir,"data/BOM rainfall/SC_rainfall_fmt.txt"),
+#             delim = "\t")
+SC_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/SC_rainfall_fmt.txt"),
+            sep = "\t") %>%
+  filter(Year >= 1950) %>%
+  filter(Year <= 2023)
+## PL
+PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
+PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
+## Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
+# BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
+# PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
+#   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
+#   mutate(rnum = seq.int(nrow(.))) %>%
+#   ymd_similar()
+# write_delim(PLCombined_rainfall_data,file = paste0(proj_dir,"data/BOM rainfall/PLCombined_rainfall_fmt.txt"),
+#             delim = "\t")
+PLCombined_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/PLCombined_rainfall_fmt.txt"),
+            sep = "\t") %>%
+  filter(Year >= 1950) %>%
+  filter(Year <= 2023)
+## Dunwich
+# DW_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/Dunwich_Data.csv"), header = TRUE) %>%
+#   mutate(Month_seq = cumsum(c(0, as.numeric(diff(Month)) != 0)) + 1) %>%
+#   mutate(rnum = seq.int(nrow(.))) %>%
+#   ymd_similar()
+# write_delim(DW_rainfall_data,file = paste0(proj_dir,"data/BOM rainfall/DW_rainfall_fmt.txt"),
+#             delim = "\t")
+DW_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/DW_rainfall_fmt.txt"),
+            sep = "\t") %>%
+  filter(Year >= 1950) %>%
+  filter(Year <= 2023)
+DW_100mm <- DW_rainfall_data %>%
+  filter(Rainfall.amount..millimetres. > 100) %>%
+  # filter(Period.over.which.rainfall.was.measured..days. > 1) %>%
+  mutate(date_yyyymmdd = lubridate::ymd(date_yyyymmdd)) 
+
+# Make vector of dates for 100mm PL rainfall days.
+PL_100mm_dates <- PLCombined_rainfall_data$date_yyyymmdd[which(PLCombined_rainfall_data$Rainfall.amount..millimetres. > 100)]
+DW_100mm_dates <- DW_rainfall_data$date_yyyymmdd[which(DW_rainfall_data$Rainfall.amount..millimetres. > 100)] %>% ymd()
+# Some are shared!
+# Need to know if there are any days at DW which align with multi-day PL 100mm collections. Can these give a 'true' date, and validate the exclusion of certain days?
+
+## Narrow to PL 100mm events that have a measurement period of >1 day. Then, generate a sequence
+# of dates that encompasses all days within the measurement windows. Find dates within these that match DW events.
+PL_100mm_g1d <- PLCombined_rainfall_data %>%
+  filter(Rainfall.amount..millimetres. > 100) %>%
+  filter(Period.over.which.rainfall.was.measured..days. > 1) %>%
+  mutate(date_yyyymmdd = lubridate::ymd(date_yyyymmdd)) 
+
+## Generate sequence of possible dates containing rainfall from multi-day events at PL
+PL_100mm_g1d_days <- date_seq(end_date = PL_100mm_g1d$date_yyyymmdd,
+                              back_duration = PL_100mm_g1d$Period.over.which.rainfall.was.measured..days.,
+                              include_end = TRUE)
+
+# Matches?
+PL_100mm_g1d_days[which(DW_100mm_dates %in% PL_100mm_g1d_days)]
+# Get DW days that fall inside these dates.
+DW_100mm_PLg1dmatches <- DW_100mm[which(DW_100mm_dates %in% PL_100mm_g1d_days),] 
+# Ok, there are four days for certain where there were large single-day events at DW.
+
+# Replace uncertain (multi-day) dates at PL with dates from DW if the DW dates happened over 1 day
+Bdtest <- BDdata %>%
+  group_by(Month, PROD, Currency) %>%
+  arrange(Month) %>%
+  mutate(Value = Amount + lag(Amount2, default = 0))
+
+# Sequential sums if >100mm 
+# What if a rain event falls either side of a collection time? Two-day lag/lead sums
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
+  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
+  mutate(seq_rain_lead = Rainfall.amount..millimetres. + lead(Rainfall.amount..millimetres., n = 1, default = 0))
+# SC
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
+  mutate(seq_rain_lead = Rainfall.amount..millimetres. + lead(Rainfall.amount..millimetres., n = 1, default = 0))
+
+
+# Compute days with >100mm in either lag or lead
+PL_laglead_100mm_days <- length(PLCombined_rainfall_data$date_yyyymmdd[which(PLCombined_rainfall_data$seq_rain_lag > 100 | PLCombined_rainfall_data$seq_rain_lead > 100)])
+
+SC_laglead_100mm_days <- length(SC_rainfall_data$date_yyyymmdd[which(SC_rainfall_data$seq_rain_lag > 100 | SC_rainfall_data$seq_rain_lead > 100)])
+
+## Isolate days where there is 100mm on a given day, or across two days (lagged).
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag > 100,
+                              yes = 1,
+                              no = 0))
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
+  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag > 100,
+                              yes = 1,
+                              no = 0))
+## NEED TO EXCLUDE DAYS THAT INDIVIDUALLY HAVE >100mm AS THESE WILL BE RE-PICKED UP BY THE LAG CALCULATION ON SUBSEQUENT DAYS.
+
+
+# Collection over multiple days
+SC_rainfall_g1d <- SC_rainfall_data[(which(SC_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)),] %>%
+  mutate(rainfall_adj = Rainfall.amount..millimetres./Period.over.which.rainfall.was.measured..days.)
+# PL
+PL_rainfall_g1d <- PLCombined_rainfall_data[(which(PLCombined_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)),] %>%
+  filter(Rainfall.amount..millimetres. >= 100) %>%
+  mutate(rainfall_adj = Rainfall.amount..millimetres./Period.over.which.rainfall.was.measured..days.)
+
+## VALIDATING MULTI-DAY EVENTS AT POINT LOOKOUT WITH DUNWICH DATA
+# Get dunwich data
+DW_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/Dunwich_Data.csv"), header = TRUE) 
+# Make vector of dates which are within 1 day of PL 100 mm dates
+PL_100mm <- PLCombined_rainfall_data %>%
+  filter(Rainfall.amount..millimetres. >= 100) %>%
+  mutate(date = ymd_h(paste(Year, Month, Day, sep= ' ')))
+PL_100mm_dates <- PL_100mm$
+
+
 
 ## First, rainfall parsing
 ## Add an index
@@ -328,26 +377,12 @@ SC_100mm <- SC_100mm[which(SC_100mm$Rainfall.amount..millimetres. >= 100),]
 PL_100mm <- PLCombined_rainfall_data[which(!is.na(PLCombined_rainfall_data$Rainfall.amount..millimetres.)),]
 PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
 
-## Extract data which matches the dates of large rainfall events
-# SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
-# PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
+```
 
-## Restructuring for cluster analysis
-# SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
-# PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
-
-## Removing outlier from Point lookout dataset
-# PL_trimtraj <- PL_trimtraj %>%
-#   filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
-
-## Save this data to remove the need to constantly re-load the 100MB trajectory datasets. Contact Matt (m.harris@gns.cri.nz) if you need the daily run data.
-## Saved as .txt because for some reason R doesn't like reading in midnight datetime entries from a csv, and removes the 00:00:00. This causes the cluster calcs to fail (I don't know why).
-# write_delim(SC_trimtraj,
-#             file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
-#             delim = '\t') 
-# write_delim(PL_trimtraj,
-#             file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
-#             delim = '\t')
+```{r cluster-calcs, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
+## Section notes
+# Cluster calculations for trajectories for both sites.
+# First some (now single-hashed, but left here for posterity) cutting and dicing is done on the large, daily trajectory datasets to narrow them down to 100mm events for each site. These files are >100 MB so can't be uploaded to github; thus cut + diced data frames are saved as txt files. These are read in in the current version of the script and used for the clustering. 
 
 ## Read the 100mm tab-delim text files  for cluster analysis
 SC_trimtraj <- read_delim(file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
@@ -464,7 +499,7 @@ La_Nina_polys$xmax = LaNinaEps$pos + LaNinaEps$lengths
 La_Nina_polys$ymin = -2.6
 La_Nina_polys$ymax = 2.6
 
-
+## ggplot block
 ggplot() + 
   # hlines
   geom_hline(yintercept = 0, linetype = 'solid', colour = 'black') +
@@ -473,12 +508,18 @@ ggplot() +
   geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
   geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
   # Nino3.4
-  geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3))) +
+  geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
   # difference polygons using ggh4x. This doesn't like 0 for some reason
   stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
   # annotations
-  annotate(geom = 'text', label = 'Cold SST; La Nina', x = nino_forplot$month_seq[which(nino_forplot$Year %% 1954 == 0)[1]], y = -2.3) +
-  annotate(geom = 'text', label = 'Warm SST; El Nino', x = nino_forplot$month_seq[which(nino_forplot$Year %% 1954 == 0)[1]], y = 2.3) +
+  annotate(geom = 'text', 
+           label = 'Cold SST; La Nina', 
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1954 == 0)[1]], 
+           y = -2.3) +
+  annotate(geom = 'text', 
+           label = 'Warm SST; El Nino', 
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1954 == 0)[1]], 
+           y = 2.3) +
   scale_fill_manual(
     values = c("red", "blue"),
     guide = "none") +
@@ -487,9 +528,58 @@ ggplot() +
                      breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
                      labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
   scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
+  # theme_cowplot(12) +
   theme_cowplot(12) +
   labs(x = "Year", y = "Nino 3.4 anomalies") +
   theme(plot.margin = margin(7,14,7,7))
+
+### TIFF EXPORT
+## Save as tiff (unhash and run scaling vars, tiff command, ggplot block, and dev off segment, all as a group)
+wd = 14
+hgt = 3
+scaling = 1
+tiff(paste0(tiff_dir,"ENSO-phases.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
+ann_size = textsize_vsmall/.pt/.pt
+## ggplot block
+ggplot() + 
+  # hlines
+  geom_hline(yintercept = 0, linetype = 'solid', colour = 'black', size = 0.25) +
+  geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red"), size = 0.25) +
+  # ENSO polygons
+  geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
+  geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
+  # Nino3.4
+  geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
+  # difference polygons using ggh4x. This doesn't like 0 for some reason
+  stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
+  # annotations
+  annotate(geom = 'text', 
+           label = 'Cold SST; La Nina', 
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
+           y = -2.2,
+           size = ann_size) +
+  annotate(geom = 'text', 
+           label = 'Warm SST; El Nino', 
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
+           y = 2.2,
+           size = ann_size) +
+  scale_fill_manual(
+    values = c("red", "blue"),
+    guide = "none") +
+  scale_x_continuous(expand = c(0,0),
+                     limits = c(0, max(nino_forplot$month_seq)),
+                     breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
+                     labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
+  scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
+  # theme_cowplot(12) +
+  theme_tiff(textsize_vsmall/.pt) +
+  labs(x = "Year", y = "Nino 3.4 anomalies") +
+  theme(plot.margin = margin(7,14,7,7))
+
+while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -562,7 +652,7 @@ SC_annual_rainplot <- ggplot() +
   annotate(geom = 'text', label = 'Sandy Cape', 
            x = max(SC_annual_rain_monthly$month_seq)/2,
            y = 2500) +
-  theme_cowplot(12)
+  theme_cowplot(12) +
   labs(x = "Year", y = "SC Annual rainfall (mm)") +
   # theme_rem_xaxis +
   theme(plot.title = element_text(hjust = 0.5),
@@ -578,7 +668,7 @@ SC_monthly_rainplot <- ggplot() +
   scale_y_continuous(expand = c(0,0), limits = c(-10,800), breaks = seq(0,800,200), position = 'right') +
   theme_cowplot(12) +
   theme_rem_xaxis +
-  labs(x = "Year", y = "SC Monthly rainfall (mm)") +
+  labs(y = "SC Monthly rainfall (mm)") +
   theme(plot.margin = margin(0,7,-2,7))
 
 ## PLOTS: Point lookout
@@ -609,9 +699,19 @@ PL_monthly_rainplot <- ggplot() +
                      breaks = c(0,PL_monthly_rainfall$month_seq[which(PL_monthly_rainfall$month_seq %% (12*5) == 0)]),
                      labels = c(1950,1950 + PL_monthly_rainfall$month_seq[which(PL_monthly_rainfall$month_seq %% (12*5) == 0)]/12)) +
   scale_y_continuous(expand = c(0,0), limits = c(-10,800), breaks = seq(0,800,200), position = 'right') +
-    theme_cowplot(12) +
+  theme_cowplot(12) +
   labs(x = "Year", y = "PL Monthly rainfall (mm)") +
   theme(plot.margin = margin(0,7,7,7))
+
+## Save as tiff (unhash and run scaling vars, tiff command, ggplot block, and dev off segment, all as a group). 
+## NB: didn't revise the code to optimise this figure's TIFF export as it isn't one of the key figures.
+# hgt = 11
+# wd = 14
+# scaling = 2.5
+# tiff(paste0(tiff_dir,"Rainfall-timeseries.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
 ## Combined plots
 cowplot::plot_grid(SC_annual_rainplot,
                    SC_monthly_rainplot,
@@ -619,10 +719,7 @@ cowplot::plot_grid(SC_annual_rainplot,
                    PL_monthly_rainplot,
                    nrow = 4, ncol = 1, align = 'v')
 
-# cowplot::plot_grid(PL_annual_rainplot,
-#                    PL_monthly_rainplot,
-#                    nrow = 2, ncol = 1, align = 'v')
-
+# while (!is.null(dev.list()))  dev.off()
 
 
 ```
@@ -635,7 +732,7 @@ To determine potential differences in the spatial dynamics of large event precip
 ## Section notes
 # Plotting the cluster pathways for each site.
 
-twomap_scaling <- generate_plot_themes(12)
+twomap_scaling <- generate_plot_themes(14/.pt)
 
 ## Sandy cape
 
@@ -658,47 +755,55 @@ PL_clus_bearings <- clus_bearings(pl_4clus,
 
 # Add label based on lat lon
 add_clabels <- function(clus_bearings){
-  #
-  # clus_bearings = SC_clus_bearings
-  #
   clus_bearings <- clus_bearings %>%
     mutate(nudgey = ifelse(bearing >= 315 | bearing <= 45, 2, 
                            ifelse(bearing >= 135 & bearing <= 225, -2, 0))) %>%
     mutate(nudgex = ifelse(bearing >= 45 & bearing <= 135, 2, 
                            ifelse(bearing >= 225 & bearing <= 315, -2, 0)))
-
-  labels
+  clus_bearings
 }
 
 clus_sc_dat <- sc_4clus$data$results
 sc_clusplot <- ggplot() +
   EastAus_Full_Basemap +
-  geom_path(data = clus_sc_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  geom_path(data = clus_sc_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 0.25, alpha = 1) +
   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
            aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
+           fill = "transparent", colour = "grey8", linewidth = 0.01) +
   # labs(title = "Sandy Cape >100mm rainfall event clusters (n = 5)") +
-  SC_point +
-    geom_label(data = SC_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq, "%"))) +
+  geom_point(data = SC_point_df, aes(x = lon, y = lat), shape = 21, fill = "white", size = 2) +
+    geom_label(data = SC_clus_bearings, 
+               aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq, "%")), size = textsize_vsmall/.pt/.pt) +
   twomap_scaling
 
 ## Point lookout
 clus_pl_dat <- pl_4clus$data$results
 pl_clusplot <- ggplot() +
   EastAus_Full_Basemap +
-  geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 1, alpha = 1) +
+  geom_path(data = clus_pl_dat, aes(x = lon, y = lat, group = cluster), colour = "darkred",size = 0.25, alpha = 1) +
   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
            aes(x = long, y = lat, group = group, map_id = region),
-           fill = "transparent", colour = "grey8", size = 0.2) +
+           fill = "transparent", colour = "grey8", linewidth = 0.01) +
   # labs(title = "Point Lookout >100mm rainfall event clusters (n = 5)") +
-  geom_label(data = PL_clus_bearings, aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq,"%"))) +
-  PL_point +
+  geom_label(data = PL_clus_bearings, 
+             aes(x = lon + nudgex, y = lat + nudgey, label = paste0(cluster,": ",freq,"%")), size = textsize_vsmall/.pt/.pt) +
+  geom_point(data = PL_point_df, aes(x = lon, y = lat), shape = 21, fill = "white", size = 2) +
+  # theme_maps(font_size = textsize_vsmall/.pt/.pt) +
   twomap_scaling
-
+## Tiff bits
+hgt = 7
+wd = 14
+scaling = 1
+tiff(paste0(tiff_dir,"Cluster-path-plots.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
+## Combine
 cowplot::plot_grid(sc_clusplot,
                    pl_clusplot,
                    nrow = 1, ncol = 2)
 
+while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -724,9 +829,21 @@ p3 <- ggdraw() + draw_image(img_files[3], scale = 1)
 p4 <- ggdraw() + draw_image(img_files[4], scale = 1)
 p5 <- ggdraw() + draw_image(img_files[5], scale = 1)
 
+
+## Tiff bits
+# hgt = 7
+# wd = 14
+# scaling = 1
+# tiff(paste0(tiff_dir,"BOM-MSLP-5panel.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
+## ggplot block
 plot_grid(p1, p2, p3,
           p4, p5, NULL,
           nrow = 2, ncol = 3)
+## Close null device for tiff export
+# while (!is.null(dev.list()))  dev.off()
 
 
 
@@ -758,7 +875,7 @@ PL_event_20220329 <- read_delim(file = paste0(proj_dir,"data/traj/PL_event_20220
 # Plot the event
 event_plot <- ggplot() +
   EastAus_Full_Basemap +
-  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = as.factor(trajectory), colour = as.factor(trajectory)), size = 1, alpha = 1) +
+  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = as.factor(trajectory), colour = as.factor(trajectory)), size = 0.25, alpha = 1) +
   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
            aes(x = long, y = lat, group = group, map_id = region),
            fill = "transparent", colour = "grey8", size = 0.2) +
@@ -767,9 +884,20 @@ event_plot <- ggplot() +
   guides(color = guide_legend("Date")) +
   theme(legend.position = 'inside',
         legend.position.inside = c(0.2,0.4)) +
-  PL_point 
+    geom_point(data = PL_point_df, aes(x = lon, y = lat), shape = 21, fill = "white", size = 2) 
 
+## Tiff bits
+# hgt = 7
+# wd = 7
+# scaling = 2.5
+# tiff(paste0(tiff_dir,"Event-path-plot.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
+## Display
 event_plot
+## Close null device for tiff export
+# while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -1250,9 +1378,20 @@ col4 <- plot_grid(legend_rainbars,
 # cowplot::plot_grid(rainfall_hist, rainfall_norm_hist,
 #                    largerainfall_hist, largerainfall_norm_hist,
 #                    nrow = 2, ncol = 2)
+
+## Tiff bits
+# hgt = 7
+# wd = 12
+# scaling = 2.5
+# tiff(paste0(tiff_dir,"Rainfall-phase-proportions.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
 plot_grid(col1,col2,col3,col4,
           nrow = 1, ncol = 4,
           rel_widths = c(0.25,1,1,0.25))
+## Close null device for tiff export
+# while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -1262,7 +1401,7 @@ Fig. Mean rainfall at each site during ENSO phases. Top row is using the mean of
 
 Bulk groupings of cluster proportions for each site are displayed below, both in total (i.e. number of events) and as frequencies (i.e. percentages).
 
-```{r cluster-freq-crunching, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 11, units = cm}
+```{r cluster-freq-travel, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 6, fig.width = 11, units = cm}
 ## Section notes
 # Ok, so how do these vary in different phases?
 
@@ -1308,10 +1447,19 @@ n_bar <- ggplot() +
   theme_cowplot(12) +
   labs(x = "Site", y = "Number of events", fill = "Cluster") +
   scale_y_continuous(expand = c(0,0))
-
+## Tiff bits
+# hgt = 6
+# wd = 11
+# scaling = 2.5
+# tiff(paste0(tiff_dir,"Trajectory-travel-proportions.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
+## ggplot code block
 cowplot::plot_grid(freq_bar,n_bar,
                    nrow = 1, ncol = 2)
-
+## Close null device for tiff export
+# while (!is.null(dev.list()))  dev.off()
 ```
 
 Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! So, this 
@@ -1389,8 +1537,20 @@ freq_bar_enso <- ggplot() +
 #   labs(x = "Site", y = "Number of events", fill = "Cluster") +
 #   scale_y_continuous(expand = c(0,0))
 
+
+## Tiff bits
+# hgt = 12
+# wd = 14
+# scaling = 2.5
+# tiff(paste0(tiff_dir,"Phase-cluster-proportion-bars.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
 cowplot::plot_grid(n_bar_enso,freq_bar_enso,
                    nrow = 2, ncol = 1)
+## Close null device for tiff export
+# while (!is.null(dev.list()))  dev.off()
+
 
 ```
 
