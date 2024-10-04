@@ -255,8 +255,8 @@ SC_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/SC_rain
   filter(Year >= 1950) %>%
   filter(Year <= 2023)
 ## PL
-PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
-PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
+# PL_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/PointLookout_Data.csv"), header = TRUE)
+# PLB_rainfall_data <- read.csv(paste0(proj_dir,"data/BOM rainfall/PointLookout_Bowls_Data.csv"), header = TRUE)
 ## Point Lookout combined. <1997 is bowls club, more recent is the PL station. 
 # BOM_PLB_toadd <- PLB_rainfall_data[PLB_rainfall_data$Year <= 1996,]
 # PLCombined_rainfall_data <- rbind(BOM_PLB_toadd,PL_rainfall_data) %>%
@@ -309,22 +309,99 @@ PL_100mm_g1d_days[which(DW_100mm_dates %in% PL_100mm_g1d_days)]
 DW_100mm_PLg1dmatches <- DW_100mm[which(DW_100mm_dates %in% PL_100mm_g1d_days),] 
 # Ok, there are four days for certain where there were large single-day events at DW.
 
-# Replace uncertain (multi-day) dates at PL with dates from DW if the DW dates happened over 1 day
-Bdtest <- BDdata %>%
-  group_by(Month, PROD, Currency) %>%
-  arrange(Month) %>%
-  mutate(Value = Amount + lag(Amount2, default = 0))
 
 # Sequential sums if >100mm 
 # What if a rain event falls either side of a collection time? Two-day lag/lead sums
 PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
   mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
   mutate(seq_rain_lead = Rainfall.amount..millimetres. + lead(Rainfall.amount..millimetres., n = 1, default = 0))
-# SC
+## SC
+## First, account for multi-day events.
 SC_rainfall_data <- SC_rainfall_data %>%
-  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
-  mutate(seq_rain_lead = Rainfall.amount..millimetres. + lead(Rainfall.amount..millimetres., n = 1, default = 0))
+  mutate(Period.over.which.rainfall.was.measured..days. = ifelse(is.na(Period.over.which.rainfall.was.measured..days.),
+                                                                yes = 0,
+                                                                no = Period.over.which.rainfall.was.measured..days.)) %>%
+  mutate(Rainfall.amount..millimetres. = ifelse(Period.over.which.rainfall.was.measured..days. > 1,
+                                                yes = Rainfall.amount..millimetres./(Period.over.which.rainfall.was.measured..days./2),
+                                                no = Rainfall.amount..millimetres.))
 
+SC_rainfall_data <- SC_rainfall_data %>%
+  # First, perform a one-day lagged sum of daily rainfall totals.
+  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
+  # Next, generate a copy of the rainfall totals but set all 100mm days to zero so they don't bias subsequent lag calcs.
+  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. > 100,
+                                 yes = 0,
+                                 no = Rainfall.amount..millimetres.)) %>%
+  # Another lag sum, but ignoring >100mm single-day measurements.
+  mutate(seq_rain_lag_remlg = rem_days_rfall + lag(rem_days_rfall, n = 1, default = 0))  %>%
+  # Now mark cases where either the individual day is over 100, or the adjusted lag sum is >100.
+  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag_remlg > 100,
+                              yes = 1,
+                              no = 0)) %>%
+  # Do a simple lag sum of the lag flags.
+  mutate(lag_100_dup = lag_100 + lag(lag_100)) %>%
+  # Identify cases where the sum equals 2, indicating adjacent lag_100 flags. Common if the mean mm across 3 days is >50 mm. The 'adjusted' lag 100 flag now isolates the largest days of two-day large falls.
+  mutate(lag_100_adj = ifelse(lag_100_dup == 2,
+                          yes = 0,
+                          no = lag_100)) %>%
+  # Double-confirm all 100 day individual events are accounted for
+  mutate(lag_100_adj = ifelse(Rainfall.amount..millimetres. > 100,
+                              yes = 1,
+                              no = lag_100_adj)) %>%
+    dplyr::select(-c(lag_100_dup,lag_100,seq_rain_lag,rem_days_rfall))
+    
+## Need to find the largest rain day in each pair.
+# Could just say that if the day's rain is less than half of the lagged sum total, send the index back 1? 
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(test_half = ifelse(lag_100_adj == 1 & (Rainfall.amount..millimetres. < 0.5*seq_rain_lag_remlg),
+                            yes = 1,
+                            no = 0))
+# Get the rownumbers of these.
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(rnum = seq(1,nrow(.),1))
+rows_to_0 = SC_rainfall_data$rnum[which(SC_rainfall_data$test_half == 1)]
+rows_to_1 = rows_to_0 - 1
+SC_rainfall_data$lag_100_adj[rows_to_0] <- 0
+SC_rainfall_data$lag_100_adj[rows_to_1] <- 1
+
+# Great, now isolate 100mm events! 
+SC_rainfall_100mm <- SC_rainfall_data %>%
+  filter(lag_100_adj == 1) 
+
+# Ok, need to set these to 0, and the row before them to 1.
+
+## Great, got the dates accounting for heavy rainfall across two measurements.
+# Now need to factor in multi-day collections! These are tricky because there is no way to know where the rain fell in the dates it covers.
+# SC to test.
+
+
+SC_rainfall_100mm_old <- SC_rainfall_data %>%
+  filter(Rainfall.amount..millimetres. > 100)
+
+SC_rainfall_data$date_yyyymmdd[which(!SC_rainfall_100mm_old$date_yyyymmdd %in% SC_rainfall_100mm$date_yyyymmdd)]
+
+which(SC_rainfall_100mm$Period.over.which.rainfall.was.measured..days. > 1)
+
+SC_rainfall_data$date_yyyymmdd[which(SC_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)]
+    
+## NOW NEED TO REMOVE DUPLICATES - i.e., cases where there are two subsequent registers.
+# This is fairly common.
+
+## SC pass with double duplicated call
+# Or I could just cumsum and find where the values equal 2? 
+
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(lag_100_dup = lag_100 + lead(lag_100)) %>%
+  mutate(lag_100 = ifelse(lag_100_dup == 2,
+                          yes = 0,
+                          no = lag_100))
+
+file %>%
+   arrange(sex == "F", across(everything())) %>% 
+   filter(duplicated(.)|duplicated(., fromLast = TRUE))
+
+ggplot() + 
+  geom_point(data = PLCombined_rainfall_data, aes(x = date_yyyymmdd, y = Rainfall.amount..millimetres.))
 
 # Compute days with >100mm in either lag or lead
 PL_laglead_100mm_days <- length(PLCombined_rainfall_data$date_yyyymmdd[which(PLCombined_rainfall_data$seq_rain_lag > 100 | PLCombined_rainfall_data$seq_rain_lead > 100)])
@@ -337,10 +414,17 @@ SC_rainfall_data <- SC_rainfall_data %>%
                               yes = 1,
                               no = 0))
 PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
-  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag > 100,
+  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. > 100,
+                                 yes = 0,
+                                 no = Rainfall.amount..millimetres.)) %>%
+  mutate(lag_100 = ifelse(test = rem_days_rfall > 100 | seq_rain_lag > 100,
                               yes = 1,
                               no = 0))
 ## NEED TO EXCLUDE DAYS THAT INDIVIDUALLY HAVE >100mm AS THESE WILL BE RE-PICKED UP BY THE LAG CALCULATION ON SUBSEQUENT DAYS.
+
+
+
+
 
 
 # Collection over multiple days
