@@ -11,8 +11,9 @@ output: word_document
 library(pacman)
 
 ## Load core packages. 
-p_load(splitr, openair, lubridate, magrittr, tibble, dplyr, R.utils, ggplot2, stringr, here, tidyverse, cowplot, ggh4x,forecast,
-       RColorBrewer)
+p_load(splitr, openair, lubridate, magrittr, tibble, 
+       dplyr, R.utils, ggplot2, stringr, here, tidyverse, cowplot, ggh4x,forecast,
+       RColorBrewer, ggtext)
 
 # Updated mapping package list
 p_load(maps, raster, mapdata, geosphere)
@@ -238,6 +239,8 @@ Rainall records from Sandy Cape and Point Lookout were used to filter the trajec
 
 *A note on NCEP/NCAR reanalysis data* The NCEP/NCAR reanalysis data is reasonably coarse but as the focus is on large (>100mm) events driven by (presumably) synoptic-scale dynamics, this product should be appropriate. There is some fairly severe uncertainty in the NCEP/NCAR reanalysis prior to the late 1970s (erroneous inverted integration of SH pressure buoy data).
 
+This Rmd file/word doc is optimised for figures output as separate tiff files. The figs in this doc may have odd scaling as a result.
+
 ```{r rainfall-data-crunching, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
 ## Section notes
 # Rainfall data crunching including figuring out how to handle >100 mm rainfall events if they are spanning multiple days. 
@@ -276,66 +279,95 @@ PLCombined_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall
 #   ymd_similar()
 # write_delim(DW_rainfall_data,file = paste0(proj_dir,"data/BOM rainfall/DW_rainfall_fmt.txt"),
 #             delim = "\t")
-DW_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/DW_rainfall_fmt.txt"),
-            sep = "\t") %>%
-  filter(Year >= 1950) %>%
-  filter(Year <= 2023)
-DW_100mm <- DW_rainfall_data %>%
-  filter(Rainfall.amount..millimetres. > 100) %>%
-  # filter(Period.over.which.rainfall.was.measured..days. > 1) %>%
-  mutate(date_yyyymmdd = lubridate::ymd(date_yyyymmdd)) 
+# DW_rainfall_data <- read.delim(file = paste0(proj_dir,"data/BOM rainfall/DW_rainfall_fmt.txt"),
+#             sep = "\t") %>%
+#   filter(Year >= 1950) %>%
+#   filter(Year <= 2023)
+# DW_100mm <- DW_rainfall_data %>%
+#   filter(Rainfall.amount..millimetres. >= 100) %>%
+#   # filter(Period.over.which.rainfall.was.measured..days. > 1) %>%
+#   mutate(date_yyyymmdd = lubridate::ymd(date_yyyymmdd)) 
 
-# Make vector of dates for 100mm PL rainfall days.
-PL_100mm_dates <- PLCombined_rainfall_data$date_yyyymmdd[which(PLCombined_rainfall_data$Rainfall.amount..millimetres. > 100)]
-DW_100mm_dates <- DW_rainfall_data$date_yyyymmdd[which(DW_rainfall_data$Rainfall.amount..millimetres. > 100)] %>% ymd()
-# Some are shared!
-# Need to know if there are any days at DW which align with multi-day PL 100mm collections. Can these give a 'true' date, and validate the exclusion of certain days?
-
-## Narrow to PL 100mm events that have a measurement period of >1 day. Then, generate a sequence
-# of dates that encompasses all days within the measurement windows. Find dates within these that match DW events.
-PL_100mm_g1d <- PLCombined_rainfall_data %>%
-  filter(Rainfall.amount..millimetres. > 100) %>%
-  filter(Period.over.which.rainfall.was.measured..days. > 1) %>%
-  mutate(date_yyyymmdd = lubridate::ymd(date_yyyymmdd)) 
-
-## Generate sequence of possible dates containing rainfall from multi-day events at PL
-PL_100mm_g1d_days <- date_seq(end_date = PL_100mm_g1d$date_yyyymmdd,
-                              back_duration = PL_100mm_g1d$Period.over.which.rainfall.was.measured..days.,
-                              include_end = TRUE)
-
-# Matches?
-PL_100mm_g1d_days[which(DW_100mm_dates %in% PL_100mm_g1d_days)]
-# Get DW days that fall inside these dates.
-DW_100mm_PLg1dmatches <- DW_100mm[which(DW_100mm_dates %in% PL_100mm_g1d_days),] 
-# Ok, there are four days for certain where there were large single-day events at DW.
-
-
-# Sequential sums if >100mm 
-# What if a rain event falls either side of a collection time? Two-day lag/lead sums
+### CALCULATIONS FOR ADJACENT DAYS AND MULTI-DAY MEASUREMENTS
+## Here we parse the identify 1) adjacent days where totals >100mm, and 2) where collections 
+# were made over many days. 
+# In the case of (1), pairs of days with >100 mm rainfall are identified after individual 100mm days
+# are removed from the dataset. The larger of the paired measurements is chosen for the trajectory.
+# For (2), rainfall totals are multiplied by (0.5*measurement duration) for instances where measurement
+# duration is > 1 (i.e., a daily measurement was not made, and the measurement of the rain gauge was made
+# after more than 1 day.)
+## PL first
+## Multi-day events
 PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
-  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
-  mutate(seq_rain_lead = Rainfall.amount..millimetres. + lead(Rainfall.amount..millimetres., n = 1, default = 0))
-## SC
-## First, account for multi-day events.
-SC_rainfall_data <- SC_rainfall_data %>%
-  mutate(Period.over.which.rainfall.was.measured..days. = ifelse(is.na(Period.over.which.rainfall.was.measured..days.),
-                                                                yes = 0,
-                                                                no = Period.over.which.rainfall.was.measured..days.)) %>%
-  mutate(Rainfall.amount..millimetres. = ifelse(Period.over.which.rainfall.was.measured..days. > 1,
-                                                yes = Rainfall.amount..millimetres./(Period.over.which.rainfall.was.measured..days./2),
-                                                no = Rainfall.amount..millimetres.))
-
-SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(mes_prd_adj = Period.over.which.rainfall.was.measured..days.) %>% # just to shorten the code
+  mutate(mes_prd_adj = ifelse(is.na(mes_prd_adj),
+                          yes = 0,
+                          no = mes_prd_adj)) %>%
+  mutate(Rainfall.amount..millimetres. = ifelse(mes_prd_adj > 1,
+                                                yes = Rainfall.amount..millimetres./(mes_prd_adj/2),
+                                                no = Rainfall.amount..millimetres.)) %>%
+  mutate(mes_prd_adj = ifelse(mes_prd_adj > 1, 0.5 * mes_prd_adj, mes_prd_adj))
+## Sequential days 
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
   # First, perform a one-day lagged sum of daily rainfall totals.
   mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
   # Next, generate a copy of the rainfall totals but set all 100mm days to zero so they don't bias subsequent lag calcs.
-  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. > 100,
+  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. >= 100,
                                  yes = 0,
                                  no = Rainfall.amount..millimetres.)) %>%
   # Another lag sum, but ignoring >100mm single-day measurements.
   mutate(seq_rain_lag_remlg = rem_days_rfall + lag(rem_days_rfall, n = 1, default = 0))  %>%
   # Now mark cases where either the individual day is over 100, or the adjusted lag sum is >100.
-  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag_remlg > 100,
+  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. >= 100 | seq_rain_lag_remlg >= 100,
+                          yes = 1,
+                          no = 0)) %>%
+  # Do a simple lag sum of the lag flags.
+  mutate(lag_100_dup = lag_100 + lag(lag_100)) %>%
+  # Identify cases where the sum equals 2, indicating adjacent lag_100 flags. Common if the mean mm across 3 days is >50 mm. The 'adjusted' lag 100 flag now isolates the largest days of two-day large falls.
+  mutate(lag_100_adj = ifelse(lag_100_dup == 2,
+                              yes = 0,
+                              no = lag_100)) %>%
+  # Double-confirm all 100 day individual events are accounted for
+  mutate(lag_100_adj = ifelse(Rainfall.amount..millimetres. >= 100,
+                              yes = 1,
+                              no = lag_100_adj)) %>%
+  dplyr::select(-c(lag_100_dup,lag_100,seq_rain_lag,rem_days_rfall))
+## Adjust pairings so largest day of the two is selected for the 100mm day identification
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
+  mutate(test_half = ifelse(lag_100_adj == 1 & (Rainfall.amount..millimetres. < 0.5*seq_rain_lag_remlg),
+                            yes = 1,
+                            no = 0))
+# Get the rownumbers of these.
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
+  mutate(rnum = seq(1,nrow(.),1))
+rows_to_0 = PLCombined_rainfall_data$rnum[which(PLCombined_rainfall_data$test_half == 1)]
+rows_to_1 = rows_to_0 - 1
+PLCombined_rainfall_data$lag_100_adj[rows_to_0] <- 0
+PLCombined_rainfall_data$lag_100_adj[rows_to_1] <- 1
+PLCombined_rainfall_data <- PLCombined_rainfall_data %>% dplyr::select(-c(test_half))
+## SC
+## Multi-day events
+SC_rainfall_data <- SC_rainfall_data %>%
+  mutate(mes_prd_adj = Period.over.which.rainfall.was.measured..days.) %>% # just to shorten the code
+  mutate(mes_prd_adj = ifelse(is.na(mes_prd_adj),
+                          yes = 0,
+                          no = mes_prd_adj)) %>%
+  mutate(Rainfall.amount..millimetres. = ifelse(mes_prd_adj > 1,
+                                                yes = Rainfall.amount..millimetres./(mes_prd_adj/2),
+                                                no = Rainfall.amount..millimetres.)) %>%
+  mutate(mes_prd_adj = ifelse(mes_prd_adj > 1, 0.5 * mes_prd_adj, mes_prd_adj))
+## Sequential days 
+SC_rainfall_data <- SC_rainfall_data %>%
+  # First, perform a one-day lagged sum of daily rainfall totals.
+  mutate(seq_rain_lag = Rainfall.amount..millimetres. + lag(Rainfall.amount..millimetres., n = 1, default = 0)) %>%
+  # Next, generate a copy of the rainfall totals but set all 100mm days to zero so they don't bias subsequent lag calcs.
+  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. >= 100,
+                                 yes = 0,
+                                 no = Rainfall.amount..millimetres.)) %>%
+  # Another lag sum, but ignoring >100mm single-day measurements.
+  mutate(seq_rain_lag_remlg = rem_days_rfall + lag(rem_days_rfall, n = 1, default = 0))  %>%
+  # Now mark cases where either the individual day is over 100, or the adjusted lag sum is >100.
+  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. >= 100 | seq_rain_lag_remlg >= 100,
                               yes = 1,
                               no = 0)) %>%
   # Do a simple lag sum of the lag flags.
@@ -345,13 +377,11 @@ SC_rainfall_data <- SC_rainfall_data %>%
                           yes = 0,
                           no = lag_100)) %>%
   # Double-confirm all 100 day individual events are accounted for
-  mutate(lag_100_adj = ifelse(Rainfall.amount..millimetres. > 100,
+  mutate(lag_100_adj = ifelse(Rainfall.amount..millimetres. >= 100,
                               yes = 1,
                               no = lag_100_adj)) %>%
     dplyr::select(-c(lag_100_dup,lag_100,seq_rain_lag,rem_days_rfall))
-    
-## Need to find the largest rain day in each pair.
-# Could just say that if the day's rain is less than half of the lagged sum total, send the index back 1? 
+## Adjust pairings so largest day of the two is selected for the 100mm day identification
 SC_rainfall_data <- SC_rainfall_data %>%
   mutate(test_half = ifelse(lag_100_adj == 1 & (Rainfall.amount..millimetres. < 0.5*seq_rain_lag_remlg),
                             yes = 1,
@@ -363,103 +393,38 @@ rows_to_0 = SC_rainfall_data$rnum[which(SC_rainfall_data$test_half == 1)]
 rows_to_1 = rows_to_0 - 1
 SC_rainfall_data$lag_100_adj[rows_to_0] <- 0
 SC_rainfall_data$lag_100_adj[rows_to_1] <- 1
+SC_rainfall_data <- SC_rainfall_data %>% dplyr::select(-c(test_half))
+## Ok, these should give us our 100mm days, corrected for long collection periods and two-day transient events.
+PL_100mm <- PLCombined_rainfall_data %>% filter(lag_100_adj == 1)
+SC_100mm <- SC_rainfall_data %>% filter(lag_100_adj == 1)
 
-# Great, now isolate 100mm events! 
-SC_rainfall_100mm <- SC_rainfall_data %>%
-  filter(lag_100_adj == 1) 
-
-# Ok, need to set these to 0, and the row before them to 1.
-
-## Great, got the dates accounting for heavy rainfall across two measurements.
-# Now need to factor in multi-day collections! These are tricky because there is no way to know where the rain fell in the dates it covers.
-# SC to test.
-
-
-SC_rainfall_100mm_old <- SC_rainfall_data %>%
-  filter(Rainfall.amount..millimetres. > 100)
-
-SC_rainfall_data$date_yyyymmdd[which(!SC_rainfall_100mm_old$date_yyyymmdd %in% SC_rainfall_100mm$date_yyyymmdd)]
-
-which(SC_rainfall_100mm$Period.over.which.rainfall.was.measured..days. > 1)
-
-SC_rainfall_data$date_yyyymmdd[which(SC_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)]
-    
-## NOW NEED TO REMOVE DUPLICATES - i.e., cases where there are two subsequent registers.
-# This is fairly common.
-
-## SC pass with double duplicated call
-# Or I could just cumsum and find where the values equal 2? 
-
-SC_rainfall_data <- SC_rainfall_data %>%
-  mutate(lag_100_dup = lag_100 + lead(lag_100)) %>%
-  mutate(lag_100 = ifelse(lag_100_dup == 2,
-                          yes = 0,
-                          no = lag_100))
-
-file %>%
-   arrange(sex == "F", across(everything())) %>% 
-   filter(duplicated(.)|duplicated(., fromLast = TRUE))
-
-ggplot() + 
-  geom_point(data = PLCombined_rainfall_data, aes(x = date_yyyymmdd, y = Rainfall.amount..millimetres.))
-
-# Compute days with >100mm in either lag or lead
-PL_laglead_100mm_days <- length(PLCombined_rainfall_data$date_yyyymmdd[which(PLCombined_rainfall_data$seq_rain_lag > 100 | PLCombined_rainfall_data$seq_rain_lead > 100)])
-
-SC_laglead_100mm_days <- length(SC_rainfall_data$date_yyyymmdd[which(SC_rainfall_data$seq_rain_lag > 100 | SC_rainfall_data$seq_rain_lead > 100)])
-
-## Isolate days where there is 100mm on a given day, or across two days (lagged).
-SC_rainfall_data <- SC_rainfall_data %>%
-  mutate(lag_100 = ifelse(test = Rainfall.amount..millimetres. > 100 | seq_rain_lag > 100,
-                              yes = 1,
-                              no = 0))
-PLCombined_rainfall_data <- PLCombined_rainfall_data %>%
-  mutate(rem_days_rfall = ifelse(Rainfall.amount..millimetres. > 100,
-                                 yes = 0,
-                                 no = Rainfall.amount..millimetres.)) %>%
-  mutate(lag_100 = ifelse(test = rem_days_rfall > 100 | seq_rain_lag > 100,
-                              yes = 1,
-                              no = 0))
-## NEED TO EXCLUDE DAYS THAT INDIVIDUALLY HAVE >100mm AS THESE WILL BE RE-PICKED UP BY THE LAG CALCULATION ON SUBSEQUENT DAYS.
-
-
-
-
-
-
-# Collection over multiple days
-SC_rainfall_g1d <- SC_rainfall_data[(which(SC_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)),] %>%
-  mutate(rainfall_adj = Rainfall.amount..millimetres./Period.over.which.rainfall.was.measured..days.)
-# PL
-PL_rainfall_g1d <- PLCombined_rainfall_data[(which(PLCombined_rainfall_data$Period.over.which.rainfall.was.measured..days. > 1)),] %>%
-  filter(Rainfall.amount..millimetres. >= 100) %>%
-  mutate(rainfall_adj = Rainfall.amount..millimetres./Period.over.which.rainfall.was.measured..days.)
-
-## VALIDATING MULTI-DAY EVENTS AT POINT LOOKOUT WITH DUNWICH DATA
-# Get dunwich data
-DW_rainfall_data <- read.csv(paste0(proj_dir, "data/BOM rainfall/Dunwich_Data.csv"), header = TRUE) 
-# Make vector of dates which are within 1 day of PL 100 mm dates
-PL_100mm <- PLCombined_rainfall_data %>%
-  filter(Rainfall.amount..millimetres. >= 100) %>%
-  mutate(date = ymd_h(paste(Year, Month, Day, sep= ' ')))
-PL_100mm_dates <- PL_100mm$
-
-
-
-## First, rainfall parsing
-## Add an index
-PLCombined_rainfall_data$rnum <- seq.int(nrow(PLCombined_rainfall_data))
-SC_rainfall_data$rnum <- seq.int(nrow(SC_rainfall_data))
-SC_rainfall_data <- ymd_similar(SC_rainfall_data)
-PLCombined_rainfall_data <- ymd_similar(PLCombined_rainfall_data)
+## Previous code for event identification sort
+# ## First, rainfall parsing
+# ## Add an index
+# PLCombined_rainfall_data$rnum <- seq.int(nrow(PLCombined_rainfall_data))
+# SC_rainfall_data$rnum <- seq.int(nrow(SC_rainfall_data))
+# SC_rainfall_data <- ymd_similar(SC_rainfall_data)
+# PLCombined_rainfall_data <- ymd_similar(PLCombined_rainfall_data)
 
 ## Sort for large rainfall events (>100mm)
 ## SC
-SC_100mm <- SC_rainfall_data[which(!is.na(SC_rainfall_data$Rainfall.amount..millimetres.)),]
-SC_100mm <- SC_100mm[which(SC_100mm$Rainfall.amount..millimetres. >= 100),]
+# SC_100mm <- SC_rainfall_data[which(!is.na(SC_rainfall_data$Rainfall.amount..millimetres.)),]
+# SC_100mm <- SC_100mm[which(SC_100mm$Rainfall.amount..millimetres. >= 100),]
 ## PL
-PL_100mm <- PLCombined_rainfall_data[which(!is.na(PLCombined_rainfall_data$Rainfall.amount..millimetres.)),]
-PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
+# PL_100mm <- PLCombined_rainfall_data[which(!is.na(PLCombined_rainfall_data$Rainfall.amount..millimetres.)),]
+# PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
+
+## Other rainfall data
+# Monthly
+# PL_monthly_rainfall <- PLCombined_rainfall_data %>%
+#   group_by(Month_seq) %>%
+#   summarise(month_mm = sum(Rainfall.amount..millimetres., na.rm = T), Year = unique(Year), Month = unique(Month)) %>% ungroup() %>%
+#   mutate(yr_month = paste0(Year,"-",str_pad(Month,2,side = "left","0"))) %>%
+#   mutate(month_seq = seq(1,nrow(.),1))
+# SC_monthly_rainfall <- SC_rainfall_data %>%
+#   group_by(Month_seq) %>%
+#   summarise(month_mm = sum(Rainfall.amount..millimetres., na.rm = T), Year = unique(Year), Month = unique(Month))
+
 
 ```
 
@@ -467,6 +432,21 @@ PL_100mm <- PL_100mm[which(PL_100mm$Rainfall.amount..millimetres. >= 100),]
 ## Section notes
 # Cluster calculations for trajectories for both sites.
 # First some (now single-hashed, but left here for posterity) cutting and dicing is done on the large, daily trajectory datasets to narrow them down to 100mm events for each site. These files are >100 MB so can't be uploaded to github; thus cut + diced data frames are saved as txt files. These are read in in the current version of the script and used for the clustering. 
+
+# ## Extract data which matches the dates of large rainfall events
+# SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
+# PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
+# ## Restructuring for cluster analysis
+# SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
+# PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
+# ## Removing outlier from Point lookout dataset
+# PL_trimtraj <- PL_trimtraj %>%
+#   filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
+# ## Write to tab-delim .txt
+# write_delim(SC_trimtraj, file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
+#             delim = '\t')
+# write_delim(PL_trimtraj, file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
+#             delim = '\t')
 
 ## Read the 100mm tab-delim text files  for cluster analysis
 SC_trimtraj <- read_delim(file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
@@ -492,13 +472,13 @@ sc_4clus <- openair::trajCluster(traj = SC_trimtraj,
 # results frames
 sc_4clus$data$results <- sc_4clus$data$results %>%
   mutate(cluster = ifelse(cluster == "C2",
-                          yes = "C-N",
+                          yes = "C-NE",
                           no = ifelse(cluster =="C4",
-                                      yes = "C-NE",
+                                      yes = "C-W",
                                       no = ifelse(cluster == "C1",
                                                   yes = "C-E",
                                                   no = ifelse(cluster == "C3",
-                                                              yes = "C-W",
+                                                              yes = "C-N",
                                                               no = cluster)))))
 pl_4clus$data$results <- pl_4clus$data$results %>%
   mutate(cluster = ifelse(cluster == "C3",
@@ -513,13 +493,13 @@ pl_4clus$data$results <- pl_4clus$data$results %>%
 # Trajectory frames inside the openair results
 sc_4clus$data$traj <- sc_4clus$data$traj %>%
   mutate(cluster = ifelse(cluster == "C2",
-                          yes = "C-N",
+                          yes = "C-NE",
                           no = ifelse(cluster =="C4",
-                                      yes = "C-NE",
+                                      yes = "C-W",
                                       no = ifelse(cluster == "C1",
                                                   yes = "C-E",
                                                   no = ifelse(cluster == "C3",
-                                                              yes = "C-W",
+                                                              yes = "C-N",
                                                               no = cluster)))))
 pl_4clus$data$traj <- pl_4clus$data$traj %>%
   mutate(cluster = ifelse(cluster == "C3",
@@ -619,51 +599,51 @@ ggplot() +
 
 ### TIFF EXPORT
 ## Save as tiff (unhash and run scaling vars, tiff command, ggplot block, and dev off segment, all as a group)
-wd = 14
-hgt = 3
-scaling = 1
-tiff(paste0(tiff_dir,"ENSO-phases.tiff"),
-     units = "cm",
-     width = wd * scaling, height = hgt * scaling,
-     res = 300)
-ann_size = textsize_vsmall/.pt/.pt
+# wd = 14
+# hgt = 3
+# scaling = 1
+# tiff(paste0(tiff_dir,"ENSO-phases.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
+# ann_size = textsize_vsmall/.pt/.pt
 ## ggplot block
-ggplot() + 
-  # hlines
-  geom_hline(yintercept = 0, linetype = 'solid', colour = 'black', size = 0.25) +
-  geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red"), size = 0.25) +
-  # ENSO polygons
-  geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
-  geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
-  # Nino3.4
-  geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
-  # difference polygons using ggh4x. This doesn't like 0 for some reason
-  stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
-  # annotations
-  annotate(geom = 'text', 
-           label = 'Cold SST; La Nina', 
-           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
-           y = -2.2,
-           size = ann_size) +
-  annotate(geom = 'text', 
-           label = 'Warm SST; El Nino', 
-           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
-           y = 2.2,
-           size = ann_size) +
-  scale_fill_manual(
-    values = c("red", "blue"),
-    guide = "none") +
-  scale_x_continuous(expand = c(0,0),
-                     limits = c(0, max(nino_forplot$month_seq)),
-                     breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
-                     labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
-  scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
-  # theme_cowplot(12) +
-  theme_tiff(textsize_vsmall/.pt) +
-  labs(x = "Year", y = "Nino 3.4 anomalies") +
-  theme(plot.margin = margin(7,14,7,7))
+# ggplot() + 
+#   # hlines
+#   geom_hline(yintercept = 0, linetype = 'solid', colour = 'black', size = 0.25) +
+#   geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red"), size = 0.25) +
+#   # ENSO polygons
+#   geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
+#   geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
+#   # Nino3.4
+#   geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
+#   # difference polygons using ggh4x. This doesn't like 0 for some reason
+#   stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
+#   # annotations
+#   annotate(geom = 'text', 
+#            label = 'Cold SST; La Nina', 
+#            x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
+#            y = -2.2,
+#            size = ann_size) +
+#   annotate(geom = 'text', 
+#            label = 'Warm SST; El Nino', 
+#            x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
+#            y = 2.2,
+#            size = ann_size) +
+#   scale_fill_manual(
+#     values = c("red", "blue"),
+#     guide = "none") +
+#   scale_x_continuous(expand = c(0,0),
+#                      limits = c(0, max(nino_forplot$month_seq)),
+#                      breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
+#                      labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
+#   scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
+#   # theme_cowplot(12) +
+#   theme_tiff(textsize_vsmall/.pt) +
+#   labs(x = "Year", y = "Nino 3.4 anomalies") +
+#   theme(plot.margin = margin(7,14,7,7))
 
-while (!is.null(dev.list()))  dev.off()
+# while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -878,16 +858,16 @@ pl_clusplot <- ggplot() +
 hgt = 7
 wd = 14
 scaling = 1
-tiff(paste0(tiff_dir,"Cluster-path-plots.tiff"),
-     units = "cm",
-     width = wd * scaling, height = hgt * scaling,
-     res = 300)
+# tiff(paste0(tiff_dir,"Cluster-path-plots.tiff"),
+#      units = "cm",
+#      width = wd * scaling, height = hgt * scaling,
+#      res = 300)
 ## Combine
 cowplot::plot_grid(sc_clusplot,
                    pl_clusplot,
                    nrow = 1, ncol = 2)
 
-while (!is.null(dev.list()))  dev.off()
+# while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -940,7 +920,7 @@ The trajectories from this period all behave as we might expect, moving anti-clo
 ```{r event-path-plots, echo=FALSE, message=FALSE, results='hide', warning = FALSE, fig.height = 7, fig.width = 7, units = cm}
 ## Section notes
 ## Plotting the cluster pathways for each site.
-twomap_scaling <- generate_plot_themes(12)
+twomap_scaling <- generate_plot_themes(14/.pt)
 
 ## After the single event on 29 Mar 2022 as it has satellite and synoptic chart coverage
 # PL_event_20220329 <- PL_72hr1TPD2000m_Reanalysis %>%
@@ -959,21 +939,29 @@ PL_event_20220329 <- read_delim(file = paste0(proj_dir,"data/traj/PL_event_20220
 # Plot the event
 event_plot <- ggplot() +
   EastAus_Full_Basemap +
-  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = as.factor(trajectory), colour = as.factor(trajectory)), size = 0.25, alpha = 1) +
+  geom_path(data = PL_event_20220329, aes(x = lon, y = lat, group = as.factor(trajectory), colour = as.factor(trajectory)), size = 0.5, alpha = 1) +
   geom_map(data = EastAus_Zoomout_Data, map = EastAus_Zoomout_Data,
            aes(x = long, y = lat, group = group, map_id = region),
            fill = "transparent", colour = "grey8", size = 0.2) +
   scale_colour_brewer(name = 'YlGnBu', direction = -1,
                       labels = c("2022-03-26","2022-03-27","2022-03-28","2022-03-29","2022-03-30","2022-03-31","2022-04-01","2022-04-02")) +
-  guides(color = guide_legend("Date")) +
-  theme(legend.position = 'inside',
-        legend.position.inside = c(0.2,0.4)) +
-    geom_point(data = PL_point_df, aes(x = lon, y = lat), shape = 21, fill = "white", size = 2) 
+  guides(color = guide_legend("Date",
+                              override.aes = list(size = 0.5))) +
+  theme(#legend.position = 'inside',
+        #legend.position.inside = c(0.2,0.4),
+        legend.text = element_text(size =  textsize_vsmall/.pt),
+        legend.title = element_text(size = textsize_small/.pt),
+        legend.margin = margin(1,1,1,1),
+      legend.spacing.x = unit(0, "mm"),
+      legend.spacing.y = unit(0, "mm")) +
+    geom_point(data = PL_point_df, aes(x = lon, y = lat), shape = 21, fill = "white", size = 2) +
+  twomap_scaling
+  # guides(colour = guide_legend(override.aes = list(size = 0.5)))
 
 ## Tiff bits
-# hgt = 7
-# wd = 7
-# scaling = 2.5
+hgt = 7
+wd = 10
+scaling = 1
 # tiff(paste0(tiff_dir,"Event-path-plot.tiff"),
 #      units = "cm",
 #      width = wd * scaling, height = hgt * scaling,
@@ -1390,7 +1378,7 @@ Rainfall proportions during different ENSO phases
 
 # Themes common to all
 rain_bar_themes <- list(
-  theme_cowplot(12),
+  theme_tiff(textsize_vsmall/.pt),
   scale_fill_manual(values = c("red","grey","blue")),
   theme(plot.title = element_text(hjust = 0.5))
 )
@@ -1412,7 +1400,7 @@ rainfall_norm_hist  <- ggplot() +
              filter(!is.na(ENSO_phase)) %>%
              mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
-  labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean rainfall per ENSO phase-month","\n","(duration normalised)")) +
+  labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean rainfall per ENSO phase","\n","(phase duration normalised)")) +
   rain_bar_themes +
   theme(legend.position = 'none')
 
@@ -1432,7 +1420,7 @@ largerainfall_norm_hist  <- ggplot() +
              filter(!is.na(ENSO_phase)) %>%
              mutate(site = factor(site, levels = c('SC','PL'))), 
                  aes(x = site, y = mean_rainfall_perevent, group = ENSO_phase, fill = ENSO_phase), stat = 'identity', position = 'dodge') +
-  labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean large event rainfall per ENSO phase-month","\n","(duration normalised)")) +
+  labs(x = "Site", y = "Mean rainfall (mm)", title = paste0("Mean large event rainfall per ENSO phase","\n","(phase duration normalised)")) +
   rain_bar_themes +
   theme(legend.position = 'none')
 
@@ -1454,26 +1442,28 @@ col1 <- plot_grid(NULL,
 col2 <- plot_grid(rainfall_hist,
                    largerainfall_hist,
                    nrow = 2, ncol = 1)
-col3 <- plot_grid(rainfall_norm_hist,
+col4 <- plot_grid(rainfall_norm_hist,
                    largerainfall_norm_hist,
                    nrow = 2, ncol = 1)
-col4 <- plot_grid(legend_rainbars,
+col5 <- plot_grid(legend_rainbars,
                    NULL, nrow = 2, ncol = 1)
 # cowplot::plot_grid(rainfall_hist, rainfall_norm_hist,
 #                    largerainfall_hist, largerainfall_norm_hist,
 #                    nrow = 2, ncol = 2)
-
+col3 <- plot_grid(NULL,
+                  NULL,
+                  nrow = 2, ncol = 1)
 ## Tiff bits
-# hgt = 7
-# wd = 12
-# scaling = 2.5
+hgt = 7
+wd = 12
+scaling = 1
 # tiff(paste0(tiff_dir,"Rainfall-phase-proportions.tiff"),
 #      units = "cm",
 #      width = wd * scaling, height = hgt * scaling,
 #      res = 300)
-plot_grid(col1,col2,col3,col4,
-          nrow = 1, ncol = 4,
-          rel_widths = c(0.25,1,1,0.25))
+plot_grid(col1,col2,col3,col4,col5,
+          nrow = 1, ncol = 5,
+          rel_widths = c(0.1,1,0.2,1,0.3))
 ## Close null device for tiff export
 # while (!is.null(dev.list()))  dev.off()
 
@@ -1518,30 +1508,32 @@ freq_bar <- ggplot() +
   geom_bar(data = bulk_comp, aes(x = site, y = freq, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
   scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
     geom_text(data = bulk_comp, aes(x = site, y = freq, group = cluster, label = paste0(sprintf("%1.1f", freq),"%")),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
+              position = position_stack(vjust = 0.5), size = textsize_small/.pt/.pt) +
+  theme_tiff(textsize_small/.pt) +
   labs(x = "Site", y = "Frequency", fill = "Cluster") +
-  scale_y_continuous(expand = c(0,0))
+  scale_y_continuous(expand = c(0,0)) + 
+  theme(legend.position = 'none')
 
 n_bar <- ggplot() + 
   geom_bar(data = bulk_comp, aes(x = site, y = n, fill = cluster, group = cluster), position = 'stack', stat = 'identity') +
   scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
     geom_text(data = bulk_comp, aes(x = site, y = n, group = cluster, label = n),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
+              position = position_stack(vjust = 0.5), size = textsize_small/.pt/.pt) +
+  theme_tiff(textsize_small/.pt) +
   labs(x = "Site", y = "Number of events", fill = "Cluster") +
   scale_y_continuous(expand = c(0,0))
 ## Tiff bits
 # hgt = 6
 # wd = 11
-# scaling = 2.5
+# scaling = 1
 # tiff(paste0(tiff_dir,"Trajectory-travel-proportions.tiff"),
 #      units = "cm",
 #      width = wd * scaling, height = hgt * scaling,
 #      res = 300)
 ## ggplot code block
 cowplot::plot_grid(freq_bar,n_bar,
-                   nrow = 1, ncol = 2)
+                   nrow = 1, ncol = 2,
+                   rel_widths = c(0.45,0.55))
 ## Close null device for tiff export
 # while (!is.null(dev.list()))  dev.off()
 ```
@@ -1596,10 +1588,10 @@ n_bar_enso <- ggplot() +
   facet_grid(~ site) +
   scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
     geom_text(data = clus_phase_counts, aes(x = ENSO_phase, y = n, group = cluster, label = n),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
+              position = position_stack(vjust = 0.5), size = textsize_vsmall/.pt/.pt) +
+  theme_tiff(textsize_vsmall/.pt) +
   labs(x = "ENSO phase", y = "Number of events", fill = "Cluster") +
-  scale_y_continuous(expand = c(0,0), limits = c(0,50))# +
+  scale_y_continuous(expand = c(0,0), limits = c(0,70), breaks = seq(0,70,10))# +
   # theme(axis.text.x = element_blank())
 
 freq_bar_enso <- ggplot() + 
@@ -1607,8 +1599,8 @@ freq_bar_enso <- ggplot() +
   facet_grid(~ site) +
   scale_fill_manual(values = brewer.pal(n = 5, name = 'Set1')) +
     geom_text(data = clus_phase_counts, aes(x = ENSO_phase, y = freq, group = cluster, label = paste0(100 * round(freq,3),"%")),
-              position = position_stack(vjust = 0.5)) +
-  theme_cowplot(12) +
+              position = position_stack(vjust = 0.5), size = textsize_vsmall/.pt/.pt) +
+  theme_tiff(textsize_vsmall/.pt) +
   labs(x = "ENSO Phase", y = "Frequency (%)", fill = "Cluster") +
   scale_y_continuous(expand = c(0,0))
 # 
@@ -1623,21 +1615,21 @@ freq_bar_enso <- ggplot() +
 
 
 ## Tiff bits
-# hgt = 12
-# wd = 14
-# scaling = 2.5
-# tiff(paste0(tiff_dir,"Phase-cluster-proportion-bars.tiff"),
-#      units = "cm",
-#      width = wd * scaling, height = hgt * scaling,
-#      res = 300)
+hgt = 12
+wd = 14
+scaling = 1
+tiff(paste0(tiff_dir,"Phase-cluster-proportion-bars.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
 cowplot::plot_grid(n_bar_enso,freq_bar_enso,
                    nrow = 2, ncol = 1)
 ## Close null device for tiff export
-# while (!is.null(dev.list()))  dev.off()
+while (!is.null(dev.list()))  dev.off()
 
 
 ```
 
 Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. 
 
-
+The only figure left that could be useful is large event rainfall quantity by phase! Would require some tweaking of code but could be done.
