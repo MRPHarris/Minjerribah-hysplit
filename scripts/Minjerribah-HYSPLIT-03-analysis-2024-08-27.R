@@ -95,7 +95,7 @@ Nino3.4_ann <- Nino3.4 %>%
 
 ## Trajectory data
 data_dir <- "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/"
-# SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+# SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(data_dir,"old/SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
 # PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
 
 ## Add missing data from runs that were erroneously excluded during compilation due 
@@ -118,14 +118,16 @@ SC_2017 <- read.csv(files[2], row.names = NULL) %>%
 
 ## Integrate this into the csvs then re-export
 SC_72hr1TPD2000m_Reanalysis_ud <- SC_72hr1TPD2000m_Reanalysis %>%
-  filter(date.start != 1981) %>%
-  filter(date.start != 2017) %>%
+  mutate(year.start = unlist(lapply(strsplit(date.start,"[-]"),"[[",1))) %>%
+  filter(year.start != 1981) %>% # This is silly, it doesn't match the actual date.
+  filter(year.start != 2017) %>%
+  dplyr::select(-c(year.start)) %>%
   rbind(., SC_1981) %>%
   rbind(., SC_2017) %>%
-  arrange(date.start)
+  arrange(date.start) %>% ungroup()
 
 # Re-export.
-# write.csv(SC_72hr1TPD2000m_Reanalysis_ud, file = paste0(data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"), 
+# write.csv(SC_72hr1TPD2000m_Reanalysis_ud, file = paste0(data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"),
 #           row.names = F)
 
 # plot(Nino3.4$Nino3.4, type = 'l')
