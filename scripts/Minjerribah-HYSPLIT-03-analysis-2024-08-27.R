@@ -94,8 +94,39 @@ Nino3.4_ann <- Nino3.4 %>%
   filter(Year > 1949)
 
 ## Trajectory data
-SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
-PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"data/PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+data_dir <- "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/"
+# SC_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+# PL_72hr1TPD2000m_Reanalysis <- read.csv(file = paste0(proj_dir,"PL_72hr1TPD2000m_Reanalysis_1950_2022.csv"))
+
+## Add missing data from runs that were erroneously excluded during compilation due 
+## to their being run across a date change (causes an error in the HYSPLIT compilation fn).
+## Thought I fixed this, but apparently not.
+dir <- "C:/Users/mharris/work/projects/3 active/Minjerribah Tibby/data_ext/other/"
+files <- list.files(dir,full.names = T)
+SC_1981 <- read.csv(files[1], row.names = NULL) %>% 
+  fixyear() %>%
+  subset(., select = -c(trajectory, diffs)) %>%
+  adjust_longitude() %>%
+  Add_traj_identifier(., ntraj_1 = TRUE) %>%
+  subset(., select = -c(receptor,pressure,date.inc,diffs,date.inc))
+SC_2017 <- read.csv(files[2], row.names = NULL) %>% 
+  fixyear() %>%
+  subset(., select = -c(trajectory, diffs)) %>%
+  adjust_longitude() %>%
+  Add_traj_identifier(., ntraj_1 = TRUE) %>%
+  subset(., select = -c(receptor,pressure,date.inc,diffs,date.inc))
+
+## Integrate this into the csvs then re-export
+SC_72hr1TPD2000m_Reanalysis_ud <- SC_72hr1TPD2000m_Reanalysis %>%
+  filter(date.start != 1981) %>%
+  filter(date.start != 2017) %>%
+  rbind(., SC_1981) %>%
+  rbind(., SC_2017) %>%
+  arrange(date.start)
+
+# Re-export.
+# write.csv(SC_72hr1TPD2000m_Reanalysis_ud, file = paste0(data_dir,"SC_72hr1TPD2000m_Reanalysis_1950_2022.csv"), 
+#           row.names = F)
 
 # plot(Nino3.4$Nino3.4, type = 'l')
 # 

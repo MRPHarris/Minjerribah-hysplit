@@ -2,7 +2,7 @@
 # m.harris@gns.cri.nz
 # Last modified 2024-10-01
 
-# Themes used in figures generally generated within R notebook chunks, output to word, with widths of < 14cm.
+# Themes used in figures generally generated within R notebook chunks, output to word or TIFFs, with widths of < 14cm.
 
 ##### Global theme settings #####
 

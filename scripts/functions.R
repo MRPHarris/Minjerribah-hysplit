@@ -105,3 +105,92 @@ date_seq <- function(end_date,back_duration,include_end = TRUE){
   }
 }
 
+# This uses various vars in the rainfall calculations to distinguish rainfall events. Relies on event type (multi-day, single day) and differences in dates.
+# long and lazy by-row list iteration 
+event_identifier <- function(frame_100mm){
+  event_ids <- vector('list', length = nrow(frame_100mm))
+  for(r in seq_along(event_ids)){
+    if(r == 1){
+      event_ids[[r]] = 1
+    } else {
+      # flags
+      this_flag = frame_100mm$event_flag[r]
+      prev_flag = frame_100mm$event_flag[r-1]
+      # dates
+      this_date = frame_100mm$date_yyyymmdd[r]
+      prev_date = frame_100mm$date_yyyymmdd[r-1]
+      # date diffs 
+      diff_date = frame_100mm$date_diff[r]
+      # Now, conditions.
+      if(this_flag == 1 && prev_flag == 1){
+        # Both individual events! Add 1 and move on
+        event_ids[[r]] = event_ids[[r-1]] + 1
+      } else if(this_flag != prev_flag){
+        # Change of event type (individual to multi-day or visa versa)
+        event_ids[[r]] = event_ids[[r-1]] + 1
+      } else if(this_flag == 2 && prev_flag == 2){
+        # Both multi-day. But, are they the same event? Check the date diff.
+        if(diff_date == 1){
+          # same event.
+          event_ids[[r]] = event_ids[[r-1]]
+        } else {
+          # different event.
+          event_ids[[r]] = event_ids[[r-1]] + 1
+        }
+      }
+    } 
+  }
+  event_ids <- unlist(event_ids)
+  event_ids # pipe this when using fn
+}
+
+# Fixes incorrect years in HYSPLIT output frames. Some years are erroneously returned
+# as being in the second half of the 21st century. First digit substitution error somewhere.
+# Clumsy fn to fix.
+fixyear <- function(trajdata,
+                    wrong_years = seq(2049,2099,1),
+                    replacement_years = seq(1949,1999,1)){
+  ## vars for intra-function testing
+  # trajdata = trajfile
+  # wrong_years = c(2049,2050)
+  # replacement_years = c(1949,1950)
+  ## Simple loop with gsub
+  yit_list = vector('list',length(wrong_years))
+  for(y in seq_along(wrong_years)){
+    # Fix each.
+    # gsub year column
+    trajdata$year[which(trajdata$year == wrong_years[y])] <- replacement_years[y]
+    # gsub date.inc column
+    trajdata$date.inc <- gsub(as.character(wrong_years[y]),as.character(replacement_years[y]),trajdata$date.inc)
+    # trajdata$date.inc <- gsub("2050","1950",trajdata$date.inc)
+  }
+  return(trajdata)
+}
+
+# Add a unique trajectory identifier. Two methods depending on the ntraj_1 var. I forget
+# why this was a necessary inclusion. 
+Add_traj_identifier <- function(x, ntraj_1 = FALSE){
+  # This function assumes that convert_openair() has been used on the dataset. 
+  x_new <- as.data.frame(x)
+  # Compute trajectory number. Starts at 1. 
+  if(!isTRUE(ntraj_1)){
+    x_new$start.time.minutes <- substr(x_new[,12],12,19)
+    x_new$start.time.minutes <- 60*24*as.numeric(chron::times(x_new$start.time.minutes))
+    x_new$trajectory <- cumsum(c(0, as.numeric(diff(x_new$start.time.minutes)) != 0)) + 1
+  } else {
+    x_new$diffs <- 1
+    x_new$diffs[2:nrow(x_new)] <- diff(x_new$hour.inc) 
+    x_new$trajectory <- cumsum(c(0,as.numeric(x_new$diffs[2:nrow(x_new)]) != -1)) + 1
+  }
+  #  x_new <<- as.data.frame(x)
+  x_new
+  #  rm(x_new, envir = parent.frame())
+}
+
+# adj longitude to adjust West (negative) values.
+adjust_longitude <- function(df){
+  df_new <- df
+  adj180_index <- df_new$lon < 0
+  df_new$lon[adj180_index] <- (180 + 180-abs(df_new$lon[adj180_index]))
+  df_new
+}
