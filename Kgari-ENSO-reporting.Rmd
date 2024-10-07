@@ -526,14 +526,11 @@ SC_100mm <- SC_rainfall_data %>% filter(event_flag != 0)  %>%
 
 # ## Extract data which matches the dates of large rainfall events
 SC_100mmRainfall_Trajectories <- SC_72hr1TPD2000m_Reanalysis[SC_72hr1TPD2000m_Reanalysis$date.start %in% ( SC_100mm$date_yyyymmdd),]
-
-# test <- SC_100mmRainfall_Trajectories
-
 PL_100mmRainfall_Trajectories <- PL_72hr1TPD2000m_Reanalysis[PL_72hr1TPD2000m_Reanalysis$date.start %in% ( PL_100mm$date_yyyymmdd),]
 ## Restructuring for cluster analysis
 SC_trimtraj <- format_for_openair(SC_100mmRainfall_Trajectories)
 PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
-## Removing outlier from Point lookout dataset
+## Removing outliers from Point lookout dataset
 PL_trimtraj <- PL_trimtraj %>%
   filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
 ## Write to tab-delim .txt
@@ -1482,6 +1479,9 @@ SC_rainfall_events_phases <- SC_100mm %>%
   # summarise(mean_rainfall_perevent = mean(norm_event_rainfall), n = n()) %>%
   mutate(ENSO_phase = factor(ENSO_phase, levels = c("El-Nino","Neutral","La-Nina")))
 
+# What if we focus >125?
+mean(SC_100mm$event_rainfall[which(SC_100mm$event_rainfall > 125)])
+mean(PL_100mm$event_rainfall[which(PL_100mm$event_rainfall > 125)])
 
 
 ```
@@ -1617,7 +1617,8 @@ SC_composition <- sc_4clus$data$results %>%
 # Both
 bulk_comp <- rbind(SC_composition,
                    PL_composition) %>%
-  mutate(site = factor(site, levels = c("SC","PL")))
+  mutate(site = factor(site, levels = c("SC","PL"))) #%>%
+  # mutate(cluster = factor(cluster, levels = c("C-E","C-NE","C-N","C-W","C-S")))
 
 
 freq_bar <- ggplot() + 
