@@ -4,7 +4,7 @@ author: Matt Harris
 output: word_document
 ---
 
-This Rmd file is optimised for figures output as separate tiff files. The figs in this doc may have odd scaling as a result.
+This Rmd file is optimised for figures output as separate tiff files. The figs in this doc may have odd scaling as a result. It renders to ms word for testing purposes. 
 
 ```{r setup-main, echo = FALSE, message = FALSE, results = 'hide', warning = FALSE, fig.show = 'hide'}
 ## SETUP CHUNK
@@ -25,6 +25,9 @@ p_load(maps, raster, mapdata, geosphere)
 proj_dir = paste0(here(),"/")
 setwd(proj_dir)
 tiff_dir <- paste0(proj_dir,"figure TIFFs/")
+
+## Are you exporting figures as TIFFs? If so, they will not render in the word doc.
+TIFF = FALSE
 
 ## Functions 
 # Source fn file
@@ -534,10 +537,10 @@ PL_trimtraj <- format_for_openair(PL_100mmRainfall_Trajectories)
 PL_trimtraj <- PL_trimtraj %>%
   filter(date != unique(PL_trimtraj$date[which(PL_trimtraj$lon < 115)]))
 ## Write to tab-delim .txt
-write_delim(SC_trimtraj, file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
-            delim = '\t')
-write_delim(PL_trimtraj, file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
-            delim = '\t')
+# write_delim(SC_trimtraj, file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
+#             delim = '\t')
+# write_delim(PL_trimtraj, file = paste0(proj_dir,'data/traj/PL_100mm_trajectories_cln.txt'),
+#             delim = '\t')
 
 ## Read the 100mm tab-delim text files  for cluster analysis
 SC_trimtraj <- read_delim(file = paste0(proj_dir,'data/traj/SC_100mm_trajectories_cln.txt'),
@@ -654,8 +657,11 @@ La_Nina_polys$xmax = LaNinaEps$pos + LaNinaEps$lengths
 La_Nina_polys$ymin = -2.6
 La_Nina_polys$ymax = 2.6
 
+
+
 ## ggplot block
-ggplot() + 
+if(!TIFF){
+  ggplot() + 
   # hlines
   geom_hline(yintercept = 0, linetype = 'solid', colour = 'black') +
   geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red")) +
@@ -688,53 +694,63 @@ ggplot() +
   labs(x = "Year", y = "Nino 3.4 anomalies") +
   theme(plot.margin = margin(7,14,7,7))
 
+}
+
 ### TIFF EXPORT
 ## Save as tiff (unhash and run scaling vars, tiff command, ggplot block, and dev off segment, all as a group)
-# wd = 14
-# hgt = 3
-# scaling = 1
-# tiff(paste0(tiff_dir,"ENSO-phases.tiff"),
-#      units = "cm",
-#      width = wd * scaling, height = hgt * scaling,
-#      res = 300)
-# ann_size = textsize_vsmall/.pt/.pt  
-## ggplot block
-# ggplot() + 
-#   # hlines
-#   geom_hline(yintercept = 0, linetype = 'solid', colour = 'black', size = 0.25) +
-#   geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red"), size = 0.25) +
-#   # ENSO polygons
-#   geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
-#   geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
-#   # Nino3.4
-#   geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
-#   # difference polygons using ggh4x. This doesn't like 0 for some reason
-#   stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
-#   # annotations
-#   annotate(geom = 'text', 
-#            label = 'Cold SST; La Nina', 
-#            x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
-#            y = -2.2,
-#            size = ann_size) +
-#   annotate(geom = 'text', 
-#            label = 'Warm SST; El Nino', 
-#            x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]], 
-#            y = 2.2,
-#            size = ann_size) +
-#   scale_fill_manual(
-#     values = c("red", "blue"),
-#     guide = "none") +
-#   scale_x_continuous(expand = c(0,0),
-#                      limits = c(0, max(nino_forplot$month_seq)),
-#                      breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
-#                      labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
-#   scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
-#   # theme_cowplot(12) +
-#   theme_tiff(textsize_vsmall/.pt) +
-#   labs(x = "Year", y = "Nino 3.4 anomalies") +
-#   theme(plot.margin = margin(7,14,7,7))
+wd = 14
+hgt = 3
+scaling = 1
+if(TIFF){
+  tiff(paste0(tiff_dir,"ENSO-phases.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
 
-# while (!is.null(dev.list()))  dev.off()
+ann_size = textsize_vsmall/.pt/.pt
+# ggplot block
+ggplot() +
+  # hlines
+  geom_hline(yintercept = 0, linetype = 'solid', colour = 'black', size = 0.25) +
+  geom_hline(yintercept = c(-0.5,0.5), linetype = 'dashed', colour = c("blue","red"), size = 0.25) +
+  # ENSO polygons
+  geom_rect(data = El_Nino_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'red', alpha = 0.3) +
+  geom_rect(data = La_Nina_polys, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = 'blue', alpha = 0.3) +
+  # Nino3.4
+  geom_line(data = nino_forplot, aes(x = month_seq, y = ma(Nino3.4,3)), size = 0.25) +
+  # difference polygons using ggh4x. This doesn't like 0 for some reason
+  stat_difference(data = nino_forplot, aes(x = month_seq, ymin = 0.00000001, ymax = ma(Nino3.4,3))) +
+  # annotations
+  annotate(geom = 'text',
+           label = 'Cold SST; La Nina',
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]],
+           y = -2.2,
+           size = ann_size) +
+  annotate(geom = 'text',
+           label = 'Warm SST; El Nino',
+           x = nino_forplot$month_seq[which(nino_forplot$Year %% 1955 == 0)[1]],
+           y = 2.2,
+           size = ann_size) +
+  scale_fill_manual(
+    values = c("red", "blue"),
+    guide = "none") +
+  scale_x_continuous(expand = c(0,0),
+                     limits = c(0, max(nino_forplot$month_seq)),
+                     breaks = c(0,nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]),
+                     labels = c(1950, 1950 + nino_forplot$month_seq[which(nino_forplot$month_seq %% (12*5) == 0)]/12)) +
+  scale_y_continuous(expand = c(0,0), limits = c(-2.6,2.6)) +
+  # theme_cowplot(12) +
+  theme_tiff(textsize_vsmall/.pt) +
+  labs(x = "Year", y = "Nino 3.4 anomalies") +
+  theme(plot.margin = margin(7,14,7,7))
+
+  
+}
+
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
+
 
 ```
 
@@ -860,21 +876,26 @@ PL_monthly_rainplot <- ggplot() +
 
 ## Save as tiff (unhash and run scaling vars, tiff command, ggplot block, and dev off segment, all as a group). 
 ## NB: didn't revise the code to optimise this figure's TIFF export as it isn't one of the key figures.
-# hgt = 11
-# wd = 14
-# scaling = 2.5
-# tiff(paste0(tiff_dir,"Rainfall-timeseries.tiff"),
-#      units = "cm",
-#      width = wd * scaling, height = hgt * scaling,
-#      res = 300)
+
+if(TIFF){
+  hgt = 11
+wd = 14
+scaling = 2.5
+  tiff(paste0(tiff_dir,"Rainfall-timeseries.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
+}
+
 ## Combined plots
 cowplot::plot_grid(SC_annual_rainplot,
                    SC_monthly_rainplot,
                    PL_annual_rainplot,
                    PL_monthly_rainplot,
                    nrow = 4, ncol = 1, align = 'v')
-
-# while (!is.null(dev.list()))  dev.off()
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
 
 
 ```
@@ -946,19 +967,24 @@ pl_clusplot <- ggplot() +
   # theme_maps(font_size = textsize_vsmall/.pt/.pt) +
   twomap_scaling
 ## Tiff bits
-hgt = 7
+
+if(TIFF){
+  hgt = 7
 wd = 14
 scaling = 1
-tiff(paste0(tiff_dir,"Cluster-path-plots.tiff"),
+  tiff(paste0(tiff_dir,"Cluster-path-plots.tiff"),
      units = "cm",
      width = wd * scaling, height = hgt * scaling,
      res = 300)
+}
 ## Combine
 cowplot::plot_grid(sc_clusplot,
                    pl_clusplot,
                    nrow = 1, ncol = 2)
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
 
-while (!is.null(dev.list()))  dev.off()
 
 ```
 
@@ -989,16 +1015,21 @@ p5 <- ggdraw() + draw_image(img_files[5], scale = 1)
 # hgt = 7
 # wd = 14
 # scaling = 1
-# tiff(paste0(tiff_dir,"BOM-MSLP-5panel.tiff"),
-#      units = "cm",
-#      width = wd * scaling, height = hgt * scaling,
-#      res = 300)
+if(TIFF){
+tiff(paste0(tiff_dir,"BOM-MSLP-5panel.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
+}
 ## ggplot block
 plot_grid(p1, p2, p3,
           p4, p5, NULL,
           nrow = 2, ncol = 3)
 ## Close null device for tiff export
-# while (!is.null(dev.list()))  dev.off()
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
+
 
 
 
@@ -1050,17 +1081,24 @@ event_plot <- ggplot() +
   # guides(colour = guide_legend(override.aes = list(size = 0.5)))
 
 ## Tiff bits
-hgt = 7
+
+if(TIFF){
+  hgt = 7
 wd = 10
 scaling = 1
-# tiff(paste0(tiff_dir,"Event-path-plot.tiff"),
-#      units = "cm",
-#      width = wd * scaling, height = hgt * scaling,
-#      res = 300)
+tiff(paste0(tiff_dir,"Event-path-plot.tiff"),
+     units = "cm",
+     width = wd * scaling, height = hgt * scaling,
+     res = 300)
+}
+
 ## Display
 event_plot
 ## Close null device for tiff export
-# while (!is.null(dev.list()))  dev.off()
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
+
 
 ```
 
@@ -1496,6 +1534,7 @@ Rainfall proportions during different ENSO phases
 rain_bar_themes <- list(
   theme_tiff(textsize_vsmall/.pt),
   scale_fill_manual(values = c("red","grey","blue")),
+  scale_y_continuous(expand = c(0,0)),
   theme(plot.title = element_text(hjust = 0.5))
 )
 
@@ -1570,18 +1609,24 @@ col3 <- plot_grid(NULL,
                   NULL,
                   nrow = 2, ncol = 1)
 ## Tiff bits
-hgt = 7
+
+if(TIFF){
+  hgt = 7
 wd = 12
 scaling = 1
-tiff(paste0(tiff_dir,"Rainfall-phase-proportions.tiff"),
+  tiff(paste0(tiff_dir,"Rainfall-phase-proportions.tiff"),
      units = "cm",
      width = wd * scaling, height = hgt * scaling,
      res = 300)
+}
 plot_grid(col1,col2,col3,col4,col5,
           nrow = 1, ncol = 5,
           rel_widths = c(0.1,1,0.2,1,0.3))
 ## Close null device for tiff export
-while (!is.null(dev.list()))  dev.off()
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
+
 
 ```
 
@@ -1640,22 +1685,29 @@ n_bar <- ggplot() +
   labs(x = "Site", y = "Number of events", fill = "Cluster") +
   scale_y_continuous(expand = c(0,0))
 ## Tiff bits
-hgt = 6
+
+if(TIFF){
+  hgt = 6
 wd = 11
 scaling = 1
-tiff(paste0(tiff_dir,"Trajectory-travel-proportions.tiff"),
+  tiff(paste0(tiff_dir,"Trajectory-travel-proportions.tiff"),
      units = "cm",
      width = wd * scaling, height = hgt * scaling,
      res = 300)
+}
+
 ## ggplot code block
 cowplot::plot_grid(freq_bar,n_bar,
                    nrow = 1, ncol = 2,
                    rel_widths = c(0.45,0.55))
 ## Close null device for tiff export
-while (!is.null(dev.list()))  dev.off()
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
+
 ```
 
-Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! So, this 
+Fig. Proportions (frequencies) and quantities of large (>100 mm) rainfall events associated with trajectory clusters to Sandy Cape and Point Lookout, 1950-2022. Some similarities are immediately apparent - for instance, whilst Point Lookout received more large events during this period, both sites received an identical number of C-W events. Interestingly, none of these are on the same day! 
 
 #### ENSO phase effect on trajectory travel
 
@@ -1732,18 +1784,22 @@ freq_bar_enso <- ggplot() +
 
 
 ## Tiff bits
-hgt = 12
+
+if(TIFF){
+  hgt = 12
 wd = 14
 scaling = 1
-tiff(paste0(tiff_dir,"Phase-cluster-proportion-bars.tiff"),
+  tiff(paste0(tiff_dir,"Phase-cluster-proportion-bars.tiff"),
      units = "cm",
      width = wd * scaling, height = hgt * scaling,
      res = 300)
+}
 cowplot::plot_grid(n_bar_enso,freq_bar_enso,
                    nrow = 2, ncol = 1)
 ## Close null device for tiff export
-while (!is.null(dev.list()))  dev.off()
-
+if(TIFF){
+  while (!is.null(dev.list()))  dev.off()
+}
 
 ```
 
