@@ -18,6 +18,5 @@ DIRECTORIES
 /scripts/ contains three scripts that, when run/worked through in order, should allow the HYSPLIT runs for the manuscript to be replicated.  
 /themes/ contains an .R file sourced by the .Rmd file for thematic settings (ggplot2 themes, mainly)  
 
-REFERENCE
-
+REFERENCE   
 Tibby, J., Cadd, H., Harris, M., Marshall, J.C., Tyler, J., Barr, C., McInerney, F., Moss, P., Murphy, C., Gadd, P.S., Jacobsen, G.E., Raven, M., McGregor, G., Schulz, C. and Hofmann, H. (2025), Mid-Holocene drying of K'gari lakes (subtropical eastern Australia) necessitates re-evaluation of the El Niño–Southern Oscillation climate links and future drying risk. J. Quaternary Sci. [https://doi.org/10.1002/jqs.70016](https://doi.org/10.1002/jqs.70016).
